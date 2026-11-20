@@ -32,6 +32,7 @@
 
 enum { NL_WIND, NL_SEA, NL_RAIN, NL_FIRE, NL_BIRD, NL_COUNT };
 #define NAT_NCRICK 3                       /* crickets, each its own pitch and rhythm */
+#define NAT_NCHIME 4                       /* wind chimes ringing at once */
 
 #define NAT_BPS (FS / CTL)                 /* control blocks a second (1378 at 44.1 kHz) */
 #define NAT_HZ_INC ((uint32_t)((1ull << 32) / FS))   /* phase increment of 1 Hz (97391 at 44.1 kHz) */
@@ -79,6 +80,14 @@ typedef struct {
     /* the host's settings (0 = the default): the glide's shift (blocks: 2^n, 6..13), the events' fade shift (11..15),
      * the crickets' and the thunder's amounts (64 = as designed, 0..127) */
     uint8_t glide_sh, ev_sh, cr_amt, th_amt;
+    /* the host's: CHIMES (level 0 = off, the key 0..11 from C, the scale, decay), LO-FI (crush, rate, wobble, dust),
+     * the master filter (64 open, below a low-pass, above a high-pass; its resonance); all 0..127 */
+    uint8_t ch_lvl, ch_key, ch_scale, ch_decay, lf_crush, lf_rate, lf_wob, lf_dust, mf_filt, mf_reso;
+    uint32_t ch_ph[NAT_NCHIME][2];
+    int32_t ch_env[NAT_NCHIME], ch_note[NAT_NCHIME], ch_next;
+    uint32_t wob_ph, flut_ph;
+    int32_t hold_n, hold_v;
+    nat_f_t mf;
     uint32_t cr_ph[NAT_NCRICK];
     int32_t cr_cnt[NAT_NCRICK], cr_pulses[NAT_NCRICK], cr_env[NAT_NCRICK], cr_on[NAT_NCRICK];
     int32_t scene_note, fade, boost[NL_COUNT];
@@ -365,8 +374,10 @@ static void nature_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
     int32_t lvl[NL_COUNT], evol = p[P_E6], mood, calm, tone, k, g, lo, gsh;
     nat_c_t cw, cw2, cwl, csl, csh, crh, crd, crb, cfl, cfc, ctl;
     int32_t wamp = 0, whis = 0, rumble = 0, hiss = 0, rthr = 0, rbig = 0, rhiss = 0, roar = 0, cthr = 0;
-    int32_t benv0 = 0, benv1 = 0, thamp = 0, crl = 0, cre0[NAT_NCRICK], cre1[NAT_NCRICK];
-    uint32_t crinc[NAT_NCRICK];
+    int32_t benv0 = 0, benv1 = 0, thamp = 0, crl = 0, cre0[NAT_NCRICK], cre1[NAT_NCRICK], chl = 0, chw = 0, mfm, crush, hold,
+            dust;
+    uint32_t crinc[NAT_NCRICK], chinc[NAT_NCHIME];
+    nat_c_t cmf;
     uint32_t binc = 0, vinc = 0, i;
     if (!s->init)
         nat_init(s, v);
@@ -599,6 +610,47 @@ static void nature_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
             s->thun = 0;
     }
 
+    /* -------- wind chimes: struck in the key and scale, more in the gusts; two partials (a bar's 1 : 2.76) */
+    {
+        static const uint8_t CH_SCALE[5][7] = {{0, 2, 4, 7, 9, 12, 14}, {0, 3, 5, 7, 10, 12, 15}, {0, 1, 5, 7, 8, 12, 13},
+                                               {0, 2, 4, 6, 8, 10, 12}, {0, 2, 4, 6, 7, 9, 11}};   /* PENTA MAJ, PENTA
+                                                * MIN, IN SEN, WHOLE, LYDIAN */
+        static const uint16_t C5_HZ16[12] = {8372, 8870, 9397, 9956, 10548, 11175, 11840, 12544, 13290, 14080, 14917, 15804};
+        int32_t gq = lvl[NL_WIND] ? (s->gust >> 8) : 4000, thr = 12 + ((gq * 150) >> 15), dk;
+        int32_t wv = ((sine_i(s->wob_ph) * s->lf_wob) >> 7) + ((sine_i(s->flut_ph) * s->lf_wob) >> 9);   /* Q15-ish */
+        s->wob_ph += 1870000u;                         /* ~0.6 Hz: the tape's wow */
+        s->flut_ph += 21800000u;                       /* ~7 Hz: its flutter */
+        chw = wv;
+        if (s->ch_lvl && (int32_t)(nat_rnd(s) >> 16) < thr) {   /* a chime struck */
+            int32_t v = s->ch_next++ % NAT_NCHIME, deg = nat_urand(s, 0, 6), n = CH_SCALE[s->ch_scale % 5u][deg] + s->ch_key % 12u;
+            uint32_t hz16 = (uint32_t)C5_HZ16[n % 12] << (n / 12), inc;
+            inc = (hz16 * NAT_HZ_INC) >> 4;
+            s->ch_note[v] = (int32_t)inc;
+            s->ch_env[v] = nat_urand(s, 14000, 32767);
+        }
+        dk = 79 - s->ch_decay * 73 / 127;              /* ~0.3 .. 4 s */
+        for (k = 0; k < NAT_NCHIME; k++) {
+            s->ch_env[k] -= (s->ch_env[k] * dk) >> 15;
+            if (s->ch_env[k] < 40)
+                s->ch_env[k] = 0;
+            chinc[k] = (uint32_t)s->ch_note[k] + (uint32_t)(((int32_t)((uint32_t)s->ch_note[k] >> 15) * wv) >> 13);
+        }
+        chl = s->ch_lvl ? nat_lvl(s->ch_lvl) : 0;
+    }
+    if (crl > 300)                                     /* (the tape's wobble bends the crickets too) */
+        for (k = 0; k < NAT_NCRICK; k++)
+            crinc[k] += (uint32_t)(((int32_t)(crinc[k] >> 15) * chw) >> 13);
+    if (binc)
+        binc += (uint32_t)(((int32_t)(binc >> 15) * chw) >> 13);
+    /* -------- the master filter (a DJ filter) */
+    mfm = s->mf_filt < 58 ? 1 : s->mf_filt > 70 ? 2 : 0;
+    if (mfm)
+        nat_coef(&cmf, mfm == 1 ? (20 + s->mf_filt * 107 / 58) << 8 : ((s->mf_filt - 70) * 105 / 57) << 8,
+                 s->mf_reso * 110 / 127);
+    crush = s->lf_crush ? s->lf_crush * 12 / 127 : 0;  /* bits taken: 0 .. 12 (16 .. 4 left) */
+    hold = 1 + s->lf_rate * 23 / 127;
+    dust = s->lf_dust ? (s->lf_dust * s->lf_dust) >> 6 : 0;   /* clicks (of 65536 a sample) and hiss */
+
     /* ------------------------------------------------------------ samples */
     for (i = 0; i < n; i++) {
         uint32_t r1 = nat_rnd(s), r2 = nat_rnd(s);
@@ -672,9 +724,42 @@ static void nature_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
             y = clamp(nat_svf(&ctl, &s->t_lp, s->brown2, 0), -60000, 60000);
             acc += (y * thamp) >> 14;
         }
+        if (chl) {                                     /* the chimes */
+            int32_t cy = 0;
+            for (k = 0; k < NAT_NCHIME; k++)
+                if (s->ch_env[k]) {
+                    int32_t e = s->ch_env[k], e2 = (e * e) >> 15;
+                    uint32_t i2 = chinc[k] * 2u + (chinc[k] >> 1) + (chinc[k] >> 2);   /* x 2.75 */
+                    s->ch_ph[k][0] += chinc[k];
+                    s->ch_ph[k][1] += i2;
+                    cy += ((sine_i(s->ch_ph[k][0]) * e) >> 15) + ((sine_i(s->ch_ph[k][1]) * e2) >> 17);
+                }
+            acc += ((((cy >> 1) * (chl >> 3)) >> 12) * 150) >> 8;
+        }
+        if (dust) {                                    /* vinyl: crackles and a little hiss */
+            if ((int32_t)(r1 & 0xFFFFu) < (dust >> 4))
+                acc += (r2 & 1u) ? 9000 + (int32_t)((r1 >> 20) & 0x1FFFu) : -9000 - (int32_t)((r1 >> 20) & 0x1FFFu);
+            acc += (w2 * (dust >> 4)) >> 12;
+        }
         /* a DC blocker (~14 Hz) and the knee */
         s->dc += (shl(acc, 8) - s->dc) >> (9 + FE_OCT);
         y = soft_knee(acc - (s->dc >> 8), 24000);
+        if (mfm) {                                     /* the master filter: low-pass or high-pass */
+            int32_t bp, lp = nat_svf(&cmf, &s->mf, y, &bp);
+            y = mfm == 1 ? lp : y - lp - bp;
+            y = soft_knee(clamp(y, -100000, 100000), 24000);
+        }
+        if (crush)                                     /* LO-FI: fewer bits, a lower rate, the tape's level wobble */
+            y &= ~((1 << crush) - 1);
+        if (hold > 1) {
+            if (--s->hold_n <= 0) {
+                s->hold_n = hold;
+                s->hold_v = y;
+            }
+            y = s->hold_v;
+        }
+        if (chw)
+            y = (y * (32767 - (((sine_i(s->flut_ph) + 32768) >> 1) * s->lf_wob >> 9))) >> 15;
         y = (y * s->fade) >> 15;
         out[i] += voice_amp(y, m, i);
     }

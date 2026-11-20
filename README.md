@@ -29,16 +29,21 @@ knobs below. Every key and knob does something, and the screen says what it did.
 | **Black keys: events** | F#3 THUNDER, G#3 BIG WAVE, A#3 GUST, C#4 DOWNPOUR, D#4 CRACKLE, F#4 BIRD, G#4 BIRD CHORUS, A#4 CALM, C#5 STORM, D#5 CRICKETS, F#5 SHUFFLE. Press harder for a stronger event (key pressure). They fade by themselves. |
 | **KNOB 1-4** | the page's four, named on the screen. MAIN: MOOD (calm .. storm), LIFE (how much the scene changes by itself), TONE (dark .. bright), VOL |
 | **FX** | FX 1: REVERB, ECHO, ECHO TIME (60 ms .. 2 s), REPEAT. Again: FX 2: CHORUS, DRIVE, ROOM (size), TYPE (room, spring, hall) |
-| **LFO** | a slow LFO: TARGET (mood, tone, wind, sea, rain, fire, birds, vol, reverb, echo), RATE (0.01 .. 3.7 Hz), DEPTH, SHAPE (sine, triangle, square, random) |
+| **LFO** | a slow LFO: TARGET (mood, tone, wind, sea, rain, fire, birds, vol, reverb, echo, filter, chimes), RATE (0.01 .. 3.7 Hz), DEPTH, SHAPE (sine, triangle, square, random) |
 | **ENV** | FADE IN, FADE OUT (play / pause), GLIDE (how fast a place changes), EVENT (how long an event lasts) |
-| **EDIT** | MIX 1: WIND, SEA, RAIN, FIRE levels (turning one switches its layer on). Again: MIX 2: BIRDS, CRICKETS, THUNDER (how often), SENS (key pressure) |
-| **SELECT** | SPACE (reverb) |
+| **EDIT** | MIX 1: WIND, SEA, RAIN, FIRE levels (turning one switches its layer on). Again: MIX 2: BIRDS, CRICKETS, THUNDER (how often), CHIMES |
+| **SCL** | LO-FI: CRUSH (bits), RATE (sample rate), WOBBLE (tape wow and flutter), DUST (vinyl crackle and hiss) |
+| **GLO** | GLOBAL: FILTER (a DJ filter: left low-pass, right high-pass), RESO, PAN, SENS (key pressure) |
+| **ARP** | CHIMES: wind chimes the gusts ring. LEVEL, KEY, SCALE (major, minor, Japan, whole tone, Lydian), DECAY |
+| **SEQ** | TOUR: it plays itself. TOUR (on / off: the next place every ..), EVERY (30 s .. 20 min), ORDER (next, random), AUTO EV (events by themselves) |
+| **REC** | sleep timer: off, 15, 30, 60, 90 min, then it fades out (minutes left on the screen) |
+| **SAVE** | this sound at power-on (held 2 s: the factory sound again) |
+| **SELECT** | REVERB |
 | **ALGORITHM** | TIME: day, dusk, night (crickets and the moon come out) |
 | **PRESETS** | the places, one by one |
 | **PLAY** | pause / play (fades out and in) |
-| **HOME** | on a page: back to MAIN; on MAIN: the place as it was (undoes its changes; effects stay) |
+| **HOME** | on a page: back to MAIN; on MAIN: the place as it was. Held: HELP (the key map) |
 | **OCT- / OCT+** | previous / next place |
-| **SCL, GLO, SAVE, ARP, SEQ, REC** | HELP: the key map on the screen; any button or key closes it |
 | **OCT- + OCT+ held 5 s** | update mode (UBOOT), for reinstalling whatever happens |
 
 ## Building

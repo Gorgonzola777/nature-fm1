@@ -421,6 +421,22 @@ static void graph_nature(track_t *t)
         if ((ns.fl_x >> 4) > NS_W + 20)
             ns.fl_x = -1;
     }
+    /* wind chimes on the first pine (the CHIMES layer): three tubes swinging with the wind, bright when struck */
+    if (s->ch_lvl) {
+        int32_t cx = 13, cy = ns_top(8, sea, shore) - 12, sw = ((ns_sin(tt * 90000000u) * (windv + 30)) >> 15) / 40, hit = 0;
+        static const uint16_t C_CHIME_ = NC(0xe8c870u);
+        for (k = 0; k < 4; k++)
+            hit |= s->ch_env[k] > 8000;
+        ns_px(cx, cy, C_TRUNK), ns_px(cx + 1, cy, C_TRUNK), ns_px(cx + 2, cy, C_TRUNK), ns_px(cx + 3, cy, C_TRUNK);
+        for (k = 0; k < 3; k++)
+            for (i = 1; i <= 3 + k; i++)
+                ns_px(cx + k + (sw * i) / 4, cy + i, hit ? C_F1 : C_CHIME_);
+    }
+    /* vinyl dust (LO-FI DUST): specks that come and go */
+    if (s->lf_dust)
+        for (k = 0; k < (s->lf_dust >> 4) + 1; k++)
+            if ((ns_rnd() & 7u) == 0)
+                ns_blend(ns_ur(0, NS_W - 1), ns_ur(0, NS_H - 1), C_WHITE, 140);
     /* rain: streaks slanted by the wind */
     {
         int32_t want = (rain * NS_NDROP) >> 15, slant = 6 + ((windv * 26) >> 8);   /* Q4 px a frame across */

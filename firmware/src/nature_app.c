@@ -10,14 +10,17 @@
  *               D5 MEADOW  E5 MONSOON  F5 WINTER  G5 DAWN                                   (more places)
  *   BLACK KEYS  events (eng_nature.c): THUNDER WAVE GUST DOWNPOUR CRACKLE BIRD CHORUS CALM STORM CRICKETS SHUFFLE;
  *               the key's pressure plays the event harder
- *   KNOB 1..4   the page's four: MAIN  MOOD (calm .. storm)  LIFE (how much it changes by itself)  TONE  VOL
- *               FX (again: FX 2)  REVERB ECHO ECHO-TIME REPEATS / CHORUS DRIVE ROOM TYPE
- *               LFO  TARGET RATE DEPTH SHAPE      ENV  FADE-IN FADE-OUT GLIDE (place to place) EVENT (length)
- *               EDIT (again: MIX 2)  WIND SEA RAIN FIRE / BIRDS CRICKETS THUNDER SENS (the keys' pressure)
- *   SELECT      SPACE (reverb)        ALGORITHM  TIME (day .. night)       PRESETS  the places, one by one
- *   PLAY        pause / play (fades)  HOME  back to MAIN; on MAIN the place as it was (every change undone)
- *   OCT- / OCT+ previous / next place
- *   SCL GLO SAVE ARP SEQ REC: HELP (the map on the screen); any button or key: back */
+ *   KNOB 1..4   the page's four, named on the screen:
+ *               MAIN  MOOD LIFE TONE VOL               FX (again: FX 2)  REVERB ECHO TIME REPEAT / CHORUS DRIVE ROOM TYPE
+ *               LFO   TARGET RATE DEPTH SHAPE          ENV   FADE-IN FADE-OUT GLIDE EVENT
+ *               EDIT  (again: MIX 2) WIND SEA RAIN FIRE / BIRDS CRICKETS THUNDER CHIMES
+ *               SCL   LO-FI: CRUSH RATE WOBBLE DUST    GLO   FILTER RESO PAN SENS (the keys' pressure)
+ *               ARP   CHIMES: LEVEL KEY SCALE DECAY    SEQ   TOUR: TOUR EVERY ORDER AUTO (events by themselves)
+ *   SELECT      REVERB                ALGORITHM  TIME (day .. night)       PRESETS  the places, one by one
+ *   PLAY        pause / play (fades)  HOME  back to MAIN; on MAIN the place as it was; held: HELP
+ *   OCT- / OCT+ previous / next place REC  sleep timer (off, 15, 30, 60, 90 min: then it fades out)
+ *   SAVE        this sound at power-on (held 2 s: the factory sound)
+ */
 #include "nf_font.h"
 
 #define NUI_BG NC(0x151213u)
@@ -74,16 +77,26 @@ enum {
     K_LTGT, K_LRATE, K_LDEPTH, K_LSHAPE,
     K_FIN, K_FOUT, K_GLIDE, K_EVLEN,
     K_WIND, K_SEA, K_RAIN, K_FIRE, K_BIRDS, K_CRICK, K_THUN, K_SENS,
+    K_CRUSH, K_RATE, K_WOB, K_DUST, K_FILT, K_RESO, K_PAN, K_CHIME, K_CKEY, K_CSCALE, K_CDECAY,
+    K_TOUR, K_EVERY, K_ORDER, K_AUTO,
     K_N
 };
-enum { KT_PCT, KT_LIST, KT_HZ, KT_SEC };
+enum { KT_PCT, KT_LIST, KT_HZ, KT_SEC, KT_FILT, KT_PAN };
 typedef struct { const char *label; uint8_t kind, max, def; const char *const *names; } nui_knob_t;
 static const char *const N_ETIME[] = {"60MS", "125MS", "250MS", "375MS", "500MS", "750MS", "1S", "2S"};
 static const uint8_t ETIME_DIV[8] = {3, 2, 1, 10, 0, 12, 6, 7};   /* G_DTIME at 120 BPM: 1/32 .. 1/1 */
 static const char *const N_RTYPE2[] = {"ROOM", "SPRING", "HALL"};
-static const char *const N_LTGT[] = {"MOOD", "TONE", "WIND", "SEA", "RAIN", "FIRE", "BIRDS", "VOL", "SPACE", "ECHO"};
+static const char *const N_LTGT[] = {"MOOD", "TONE", "WIND", "SEA", "RAIN", "FIRE", "BIRDS", "VOL", "REVERB", "ECHO",
+                                     "FILTER", "CHIMES"};
 static const char *const N_LSHAPE[] = {"SINE", "TRI", "SQUARE", "RANDOM"};
-static const uint8_t LTGT_K[10] = {K_MOOD, K_TONE, K_WIND, K_SEA, K_RAIN, K_FIRE, K_BIRDS, K_VOL, K_SPACE, K_ECHO};
+static const char *const N_KEY[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+static const char *const N_CSCALE[] = {"MAJOR", "MINOR", "JAPAN", "WHOLE", "LYDIAN"};
+static const char *const N_ONOFF2[] = {"OFF", "ON"};
+static const char *const N_EVERY[] = {"30S", "1MIN", "2MIN", "3MIN", "5MIN", "10MIN", "20MIN"};
+static const uint16_t EVERY_S[7] = {30, 60, 120, 180, 300, 600, 1200};
+static const char *const N_ORDER[] = {"NEXT", "RANDOM"};
+static const uint8_t LTGT_K[12] = {K_MOOD, K_TONE, K_WIND, K_SEA, K_RAIN, K_FIRE, K_BIRDS, K_VOL, K_SPACE, K_ECHO,
+                                   K_FILT, K_CHIME};
 static const nui_knob_t NUI_K[K_N] = {
     [K_MOOD] = {"MOOD", KT_PCT, 127, 30, 0},       [K_LIFE] = {"LIFE", KT_PCT, 127, 60, 0},
     [K_TONE] = {"TONE", KT_PCT, 127, 64, 0},       [K_VOL] = {"VOL", KT_PCT, 127, 104, 0},
@@ -92,7 +105,7 @@ static const nui_knob_t NUI_K[K_N] = {
     [K_EFDBK] = {"REPEAT", KT_PCT, 127, 50, 0},    [K_CHORUS] = {"CHORUS", KT_PCT, 127, 0, 0},
     [K_DRIVE] = {"DRIVE", KT_PCT, 127, 0, 0},      [K_RSIZE] = {"ROOM", KT_PCT, 127, 90, 0},
     [K_RTYPE] = {"TYPE", KT_LIST, 2, 2, N_RTYPE2},
-    [K_LTGT] = {"TARGET", KT_LIST, 9, 0, N_LTGT},  [K_LRATE] = {"RATE", KT_HZ, 127, 30, 0},
+    [K_LTGT] = {"TARGET", KT_LIST, 11, 0, N_LTGT},  [K_LRATE] = {"RATE", KT_HZ, 127, 30, 0},
     [K_LDEPTH] = {"DEPTH", KT_PCT, 127, 0, 0},     [K_LSHAPE] = {"SHAPE", KT_LIST, 3, 0, N_LSHAPE},
     [K_FIN] = {"FADE IN", KT_SEC, 127, 45, 0},     [K_FOUT] = {"FADE OUT", KT_SEC, 127, 70, 0},
     [K_GLIDE] = {"GLIDE", KT_SEC, 127, 45, 0},     [K_EVLEN] = {"EVENT", KT_SEC, 127, 64, 0},
@@ -100,9 +113,17 @@ static const nui_knob_t NUI_K[K_N] = {
     [K_RAIN] = {"RAIN", KT_PCT, 127, 0, 0},        [K_FIRE] = {"FIRE", KT_PCT, 127, 0, 0},
     [K_BIRDS] = {"BIRDS", KT_PCT, 127, 0, 0},      [K_CRICK] = {"CRICKET", KT_PCT, 127, 64, 0},
     [K_THUN] = {"THUNDER", KT_PCT, 127, 64, 0},    [K_SENS] = {"SENS", KT_LIST, 9, 4, 0},
+    [K_CRUSH] = {"CRUSH", KT_PCT, 127, 0, 0},      [K_RATE] = {"RATE", KT_PCT, 127, 0, 0},
+    [K_WOB] = {"WOBBLE", KT_PCT, 127, 0, 0},       [K_DUST] = {"DUST", KT_PCT, 127, 0, 0},
+    [K_FILT] = {"FILTER", KT_FILT, 127, 64, 0},    [K_RESO] = {"RESO", KT_PCT, 127, 30, 0},
+    [K_PAN] = {"PAN", KT_PAN, 127, 64, 0},         [K_CHIME] = {"CHIMES", KT_PCT, 127, 0, 0},
+    [K_CKEY] = {"KEY", KT_LIST, 11, 0, N_KEY},     [K_CSCALE] = {"SCALE", KT_LIST, 4, 0, N_CSCALE},
+    [K_CDECAY] = {"DECAY", KT_PCT, 127, 70, 0},
+    [K_TOUR] = {"TOUR", KT_LIST, 1, 0, N_ONOFF2},  [K_EVERY] = {"EVERY", KT_LIST, 6, 3, N_EVERY},
+    [K_ORDER] = {"ORDER", KT_LIST, 1, 0, N_ORDER}, [K_AUTO] = {"AUTO EV", KT_PCT, 127, 0, 0},
 };
 /* the pages: what KNOB 1..4 set */
-enum { PG_MAIN, PG_FX1, PG_FX2, PG_LFO, PG_ENV, PG_MIX1, PG_MIX2, PG_N };
+enum { PG_MAIN, PG_FX1, PG_FX2, PG_LFO, PG_ENV, PG_MIX1, PG_MIX2, PG_LOFI, PG_GLO, PG_CHIME, PG_TOUR, PG_N };
 static const struct { const char *title; uint8_t k[4]; } NUI_PG[PG_N] = {
     [PG_MAIN] = {"MAIN", {K_MOOD, K_LIFE, K_TONE, K_VOL}},
     [PG_FX1] = {"FX 1/2: SPACE + ECHO", {K_SPACE, K_ECHO, K_ETIME, K_EFDBK}},
@@ -110,12 +131,18 @@ static const struct { const char *title; uint8_t k[4]; } NUI_PG[PG_N] = {
     [PG_LFO] = {"LFO: SLOW MOTION", {K_LTGT, K_LRATE, K_LDEPTH, K_LSHAPE}},
     [PG_ENV] = {"ENV: FADES + SPEED", {K_FIN, K_FOUT, K_GLIDE, K_EVLEN}},
     [PG_MIX1] = {"MIX 1/2: LEVELS", {K_WIND, K_SEA, K_RAIN, K_FIRE}},
-    [PG_MIX2] = {"MIX 2/2", {K_BIRDS, K_CRICK, K_THUN, K_SENS}},
+    [PG_MIX2] = {"MIX 2/2", {K_BIRDS, K_CRICK, K_THUN, K_CHIME}},
+    [PG_LOFI] = {"LO-FI: TAPE + VINYL", {K_CRUSH, K_RATE, K_WOB, K_DUST}},
+    [PG_GLO] = {"GLOBAL: MASTER", {K_FILT, K_RESO, K_PAN, K_SENS}},
+    [PG_CHIME] = {"CHIMES: IN THE WIND", {K_CHIME, K_CKEY, K_CSCALE, K_CDECAY}},
+    [PG_TOUR] = {"TOUR: IT PLAYS ITSELF", {K_TOUR, K_EVERY, K_ORDER, K_AUTO}},
 };
 
 static struct {
     uint8_t place, on[NL_COUNT], k[K_N], paused, help, page, hot, init;
     uint32_t frame, toast_t, hot_t, bot_sig, lfo_ph;
+    uint32_t sleep_end, tour_next, home_t0, save_t0;   /* ms (0 = none); HOME / SAVE down since (0 = up) */
+    uint8_t sleep_i, home_held, save_held;
     int32_t lfo_v, lfo_rnd, lfo_rnd_tg;                /* the LFO's value (Q15, -32767..32767), its random's */
     char toast[24];
 } nui;
@@ -170,7 +197,7 @@ static void nui_say(const char *a, const char *b)       /* a toast: a, then b if
 /* ------------------------------------------------------------ state --- */
 static int32_t nui_lfo_mod(uint32_t k)                 /* the LFO's offset on value k (in its 0..127 units) */
 {
-    if (!nui.k[K_LDEPTH] || LTGT_K[nui.k[K_LTGT] % 10u] != k)
+    if (!nui.k[K_LDEPTH] || LTGT_K[nui.k[K_LTGT] % 12u] != k)
         return 0;
     return (nui.lfo_v * nui.k[K_LDEPTH]) >> 15;         /* +-depth */
 }
@@ -221,6 +248,7 @@ static void nui_write(void)                             /* the app's values -> t
     t->p[P_ATK] = nui.k[K_FIN];
     t->p[P_REL] = nui.k[K_FOUT];
     t->p[P_ATSNS] = (int16_t)(1 + nui.k[K_SENS] % 10u);
+    t->p[P_PAN] = (int16_t)(nui.k[K_PAN] - 64);
     song.g[G_DTIME] = ETIME_DIV[nui.k[K_ETIME] % 8u];
     song.g[G_DFDBK] = (int16_t)(nui.k[K_EFDBK] * 120 / 127);
     song.g[G_RSIZE] = nui.k[K_RSIZE];
@@ -231,6 +259,16 @@ static void nui_write(void)                             /* the app's values -> t
         s->ev_sh = (uint8_t)(11 + nui.k[K_EVLEN] * 4 / 127);
         s->cr_amt = (uint8_t)(nui.k[K_CRICK] ? nui.k[K_CRICK] : 1);
         s->th_amt = (uint8_t)(nui.k[K_THUN] ? nui.k[K_THUN] : 1);
+        s->ch_lvl = (uint8_t)nui_val(K_CHIME);
+        s->ch_key = nui.k[K_CKEY];
+        s->ch_scale = nui.k[K_CSCALE];
+        s->ch_decay = nui.k[K_CDECAY];
+        s->lf_crush = nui.k[K_CRUSH];
+        s->lf_rate = nui.k[K_RATE];
+        s->lf_wob = nui.k[K_WOB];
+        s->lf_dust = nui.k[K_DUST];
+        s->mf_filt = (uint8_t)nui_val(K_FILT);
+        s->mf_reso = nui.k[K_RESO];
     }
 }
 
@@ -264,6 +302,48 @@ static void nui_play(void)                              /* the scene on (a note:
     nui.paused = 0;
 }
 
+/* SAVE: the sound at power-on, in the settings (favorites.factory[0..1]: Felucca's ANALOG and DIGITAL favourites,
+ * which NATURE has no use for): 'N', the version, the place, the layers on (bits), then the knobs' values */
+#define NUI_SAVE ((uint8_t *)&favorites.factory[0][0])
+#define NUI_SAVE_V 2u
+typedef char nui_save_fits[4 + K_N <= 64 ? 1 : -1];
+static void nui_save(void)
+{
+    uint8_t *b = NUI_SAVE;
+    uint32_t k, on = 0;
+    for (k = 0; k < NL_COUNT; k++)
+        on |= (uint32_t)nui.on[k] << k;
+    b[0] = 'N';
+    b[1] = NUI_SAVE_V;
+    b[2] = nui.place;
+    b[3] = (uint8_t)on;
+    for (k = 0; k < K_N; k++)
+        b[4 + k] = nui.k[k];
+    settings_save();                                    /* (a flash write: ~40 ms of silence) */
+}
+static void nui_forget(void)                            /* held SAVE: back to the factory sound */
+{
+    uint8_t *b = NUI_SAVE;
+    uint32_t k;
+    for (k = 0; k < 64u; k++)
+        b[k] = 0;
+    settings_save();
+}
+static int nui_load(void)                               /* 1: the saved sound is back */
+{
+    const uint8_t *b = NUI_SAVE;
+    uint32_t k;
+    if (b[0] != 'N' || b[1] != NUI_SAVE_V)
+        return 0;
+    nui_place(b[2] % NUI_NPLACE);                       /* (the place, then everything as it was saved) */
+    for (k = 0; k < NL_COUNT; k++)
+        nui.on[k] = (uint8_t)((b[3] >> k) & 1u);
+    for (k = 0; k < K_N; k++)
+        nui.k[k] = (uint8_t)(b[4 + k] <= NUI_K[k].max ? b[4 + k] : NUI_K[k].def);
+    nui_write();
+    return 1;
+}
+
 static void nui_boot(void)
 {
     uint32_t k;
@@ -279,9 +359,10 @@ static void nui_boot(void)
     trk[0].p[P_MUTE] = 0;
     trk[0].p[P_VOICE] = V_POLY;
     nui_place(0);
+    k = (uint32_t)nui_load();
     nui_play();
     nui.init = 1;
-    nui_say("NATURE", 0);
+    nui_say("NATURE", k ? "(SAVED)" : 0);
 }
 
 /* ------------------------------------------------------------ input --- */
@@ -312,8 +393,44 @@ static void nui_input(void)
     int own = eng_mem_owner[0] == ENGI_NATURE + 1u;
     if (!nui.init)
         nui_boot();
+    {   /* HOME and SAVE act when let go (a tap) or when held (HOME 0.7 s: HELP; SAVE 2 s: the factory sound) */
+        uint32_t held = fm1_in.buttons, hb = 1u << panel.btn[B_HOME], sb = 1u << panel.btn[B_SAVE];
+        if (pressed & hb)
+            nui.home_t0 = fm1_ms | 1u, nui.home_held = 0;
+        if (pressed & sb)
+            nui.save_t0 = fm1_ms | 1u, nui.save_held = 0;
+        if (nui.home_t0 && (held & hb) && !nui.home_held && fm1_ms - nui.home_t0 > 700u) {
+            nui.home_held = 1;
+            nui.help = 1;
+        }
+        if (nui.save_t0 && (held & sb) && !nui.save_held && fm1_ms - nui.save_t0 > 2000u) {
+            nui.save_held = 1;
+            nui_forget();
+            nui_say("FACTORY SOUND", "AT POWER-ON");
+        }
+        if (nui.home_t0 && !(held & hb)) {
+            if (!nui.home_held) {
+                if (nui.help)
+                    nui.help = 0;
+                else if (nui.page != PG_MAIN)
+                    nui_page(PG_MAIN);
+                else {
+                    nui_place(nui.place);
+                    nui_say("RESET", NUI_PLACES[nui.place].name);
+                }
+            }
+            nui.home_t0 = 0;
+        }
+        if (nui.save_t0 && !(held & sb)) {
+            if (!nui.save_held) {
+                nui_save();
+                nui_say("SAVED:", "POWER-ON SOUND");
+            }
+            nui.save_t0 = 0;
+        }
+    }
     for (b = 0; b < NB; b++) {
-        if (!((pressed >> panel.btn[b]) & 1u))
+        if (!((pressed >> panel.btn[b]) & 1u) || b == B_HOME || b == B_SAVE)
             continue;
         if (nui.help) {                                 /* help up: any button closes it */
             nui.help = 0;
@@ -330,14 +447,6 @@ static void nui_input(void)
                 nui_say("PLAY", 0);
             }
             break;
-        case B_HOME:
-            if (nui.page != PG_MAIN) {
-                nui_page(PG_MAIN);
-            } else {
-                nui_place(nui.place);
-                nui_say("RESET", NUI_PLACES[nui.place].name);
-            }
-            break;
         case B_OCTDN:
         case B_OCTUP:
             nui_place(nui.place + (b == B_OCTUP ? 1u : NUI_NPLACE - 1u));
@@ -352,13 +461,34 @@ static void nui_input(void)
             nui_page(nui.page == PG_MIX1 ? PG_MIX2 : nui.page == PG_MIX2 ? PG_MAIN : PG_MIX1);
             break;
         case B_LFO:
-            nui_page(nui.page == PG_LFO ? PG_MAIN : PG_LFO);
-            break;
         case B_ENV:
-            nui_page(nui.page == PG_ENV ? PG_MAIN : PG_ENV);
+        case B_SCL:
+        case B_GLO:
+        case B_ARP:
+        case B_SEQ: {
+            uint32_t pg = b == B_LFO ? PG_LFO : b == B_ENV ? PG_ENV : b == B_SCL ? PG_LOFI : b == B_GLO ? PG_GLO
+                        : b == B_ARP ? PG_CHIME : PG_TOUR;
+            nui_page(nui.page == pg ? PG_MAIN : pg);
             break;
+        }
+        case B_REC: {                                   /* the sleep timer: off, 15, 30, 60, 90 minutes */
+            static const uint8_t MIN[5] = {0, 15, 30, 60, 90};
+            char m[12];
+            uint32_t n;
+            nui.sleep_i = (uint8_t)((nui.sleep_i + 1u) % 5u);
+            nui.sleep_end = nui.sleep_i ? (fm1_ms + MIN[nui.sleep_i] * 60000u) | 1u : 0u;
+            if (nui.sleep_i) {
+                nui_num(m, MIN[nui.sleep_i]);
+                for (n = 0; m[n]; n++)
+                    ;
+                m[n] = ' ', m[n + 1] = 'M', m[n + 2] = 'I', m[n + 3] = 'N', m[n + 4] = 0;
+                nui_say("SLEEP IN", m);
+            } else {
+                nui_say("SLEEP TIMER OFF", 0);
+            }
+            break;
+        }
         default:
-            nui.help = 1;
             break;
         }
     }
@@ -435,7 +565,12 @@ static void nui_leds(void)
         led_put(nd, panel.btn[k], 1);
     led_put(nl, panel.btn[B_HOME], 1);
     pb = nui.page == PG_FX1 || nui.page == PG_FX2 ? B_FX : nui.page == PG_LFO ? B_LFO : nui.page == PG_ENV ? B_ENV
-       : nui.page == PG_MIX1 || nui.page == PG_MIX2 ? B_EDIT : NB;
+       : nui.page == PG_MIX1 || nui.page == PG_MIX2 ? B_EDIT : nui.page == PG_LOFI ? B_SCL : nui.page == PG_GLO ? B_GLO
+       : nui.page == PG_CHIME ? B_ARP : nui.page == PG_TOUR ? B_SEQ : NB;
+    if (nui.sleep_end)
+        led_put(nl, panel.btn[B_REC], 1);               /* the sleep timer on: REC lit */
+    if (nui.k[K_TOUR])
+        led_put(nb, panel.btn[B_SEQ], 1);               /* TOUR on: SEQ breathes */
     if (pb < NB)
         led_put(nl, panel.btn[pb], 1);                  /* the page's button: lit */
     if (nui.paused)
@@ -457,11 +592,11 @@ static void nui_help(uint32_t strip)
 {
     static const char *const H0[] = {"WHITE KEYS - PLACES", "F3 SHORE   G3 STORM", "A3 FOREST  B3 CAMPFIRE",
                                       "C4 RAIN    D4 NIGHT", "E4 DRIFT   D5 MEADOW", "E5 MONSOON F5 WINTER",
-                                      "G5 DAWN", "LAYERS ON/OFF", "F4 WIND G4 SEA A4 RAIN", "B4 FIRE C5 BIRDS"};
+                                      "G5 DAWN", "LAYERS ON/OFF", "F4 WIND G4 SEA A4 RAIN", "B4 FIRE C5 BIRDS  HOME:BACK"};
     static const char *const H1[] = {"BLACK KEYS - EVENTS", "F#3 THUNDER G#3 WAVE", "A#3 GUST C#4 DOWNPOUR",
                                      "D#4 CRACKLE F#4 BIRD", "G#4 CHORUS A#4 CALM", "C#5 STORM D#5 CRICKETS",
-                                     "F#5 SHUFFLE. PRESS=HARDER", "PAGES: FX LFO ENV EDIT",
-                                     "PLAY PAUSE HOME BACK/RESET", "OCT-/+ PLACE  ANY: BACK"};
+                                     "F#5 SHUFFLE  PRESS: HARDER", "BUTTONS",
+                                     "FX LFO ENV EDIT SCL GLO ARP", "SEQ TOUR REC SLEEP SAVE"};
     const char *const *h = strip ? H1 : H0;
     uint32_t i;
     for (i = 0; i < 10u; i++)
@@ -485,6 +620,21 @@ static void nui_draw_top(void)
         cv_rect(214 + 6 * (int32_t)k, 9, 4, 4, NUI_ACC);
         if (nui.k[K_LDEPTH])                            /* the LFO on: its value as a bar beside */
             cv_rect(196, 13 - (nui.lfo_v * 5 >> 15), 4, 2, NUI_DIM);
+    }
+    {   /* the sleep timer's minutes left, TOUR */
+        int32_t x = 186;
+        if (nui.sleep_end) {
+            char m[8] = "Z", n[6];
+            uint32_t left = (nui.sleep_end - fm1_ms) / 60000u + 1u, i;
+            nui_num(n, left);
+            for (i = 0; n[i]; i++)
+                m[1 + i] = n[i];
+            m[1 + i] = 0;
+            x -= nf_w(m, 1) + 4;
+            nf_text(x, 7, m, NUI_DIM, 1);
+        }
+        if (nui.k[K_TOUR])
+            nf_text(x - nf_w("TOUR", 1) - 4, 7, "TOUR", NUI_DIM, 1);
     }
     ns_y0 = 20;
     if (eng_mem_owner[0] == ENGI_NATURE + 1u)
@@ -558,6 +708,23 @@ static void nui_value(char *b, uint32_t k)              /* the value's text */
         }
         return;
     }
+    case KT_FILT:                                       /* LP nn / OPEN / HP nn */
+        if (v >= 58u && v <= 70u) {
+            b[0] = 'O', b[1] = 'P', b[2] = 'E', b[3] = 'N', b[4] = 0;
+        } else {
+            b[0] = v < 58u ? 'L' : 'H';
+            b[1] = 'P';
+            nui_num(b + 2, v < 58u ? (58u - v) * 99u / 58u : (v - 70u) * 99u / 57u);
+        }
+        return;
+    case KT_PAN:
+        if (v == 64u) {
+            b[0] = 'C', b[1] = 0;
+        } else {
+            b[0] = v < 64u ? 'L' : 'R';
+            nui_num(b + 1, v < 64u ? 64u - v : v - 64u);
+        }
+        return;
     default:
         nui_num(b, v * 100u / 127u);
         return;
@@ -614,7 +781,7 @@ static void nui_draw_bot(void)
             b[0] = 'O', b[1] = 'F', b[2] = 'F', b[3] = 0;   /* (the layer is off: a turn switches it on) */
         nf_text(x, 55, b, on ? NUI_ACC : NUI_TEXT, nf_w(b, 2) <= 54 ? 2 : 1);
         nui_bar(x, 71, 52, nui.k[kk], NUI_K[kk].max, on ? NUI_ACC : NUI_DIM);
-        if (nui.k[K_LDEPTH] && LTGT_K[nui.k[K_LTGT] % 10u] == kk)
+        if (nui.k[K_LDEPTH] && LTGT_K[nui.k[K_LTGT] % 12u] == kk)
             nf_text(x + 40, 45, "~", NUI_ACC, 1);       /* the LFO moves this one */
     }
     cv_rect(6, 79, 228, 1, NUI_PANEL);
@@ -624,7 +791,7 @@ static void nui_draw_bot(void)
     nf_text(118, 84, "TIME", hot == 6 ? NUI_ACC : NUI_DIM, 1);
     nf_text(146, 84, nui.k[K_TIME] < 32u ? "DAY" : nui.k[K_TIME] < 96u ? "DUSK" : "NIGHT", hot == 6 ? NUI_ACC : NUI_TEXT, 1);
     nui_bar(184, 86, 50, nui.k[K_TIME], 127, hot == 6 ? NUI_ACC : NUI_DIM);
-    nf_center(120, 102, "FX LFO ENV EDIT: PAGES. ELSE: HELP", NUI_OFF, 1);
+    nf_center(120, 102, "HOLD HOME: HELP   SAVE: KEEP SOUND", NUI_OFF, 1);
     cv_blit(0, NUI_TOP_H);
 }
 
@@ -640,6 +807,40 @@ static void nui_frame(void)
         nui.frame - kick > 60u) {                       /* not paused but silent (a start that went astray): start */
         kick = nui.frame;
         nui_play();
+    }
+    if (nui.sleep_end && (int32_t)(fm1_ms - nui.sleep_end) >= 0) {   /* the sleep timer ran out: fade out */
+        nui.sleep_end = 0;
+        nui.sleep_i = 0;
+        if (eng_mem_owner[0] == ENGI_NATURE + 1u && s->playing) {
+            s->playing = 0;
+            nui.paused = 1;
+            nui_say("GOOD NIGHT", 0);
+        }
+    }
+    if (nui.k[K_TOUR] && !nui.paused) {                 /* TOUR: the next place every EVERY */
+        if (!nui.tour_next)
+            nui.tour_next = (fm1_ms + EVERY_S[nui.k[K_EVERY] % 7u] * 1000u) | 1u;
+        else if ((int32_t)(fm1_ms - nui.tour_next) >= 0) {
+            uint32_t n = nui.k[K_ORDER] ? (nui.place + 1u + (fm1_ms * 2654435761u >> 16) % (NUI_NPLACE - 1u)) : nui.place + 1u;
+            nui_place(n);
+            nui_say(NUI_PLACES[nui.place].name, 0);
+            nui.tour_next = 0;
+        }
+    } else {
+        nui.tour_next = 0;
+    }
+    if (nui.k[K_AUTO] && !nui.paused && eng_mem_owner[0] == ENGI_NATURE + 1u) {   /* AUTO EV: events by themselves,
+                                                         * those the scene has: up to ~one in 8 s at full */
+        uint32_t r = nui.frame * 2654435761u ^ fm1_ms * 40503u;
+        r ^= r >> 15;
+        if ((r & 0xFFFFu) < (uint32_t)nui.k[K_AUTO] * 136u / 127u) {
+            static const uint8_t FIT[EV_COUNT] = {NL_RAIN, NL_SEA, NL_WIND, NL_RAIN, NL_FIRE, NL_BIRD, NL_BIRD, 255, 255, 255, 255};
+            uint32_t ev = (r >> 16) % 7u;               /* (THUNDER .. CHORUS: the scene's own sounds) */
+            if (nui.on[FIT[ev]] && (ev != EV_THUNDER || nui.k[K_MOOD] > 60u)) {
+                nat_event(s, (int32_t)ev);
+                nui_say(NUI_EVENT[ev], 0);
+            }
+        }
     }
     if (ui.uboot) {                                     /* OCT- + OCT+ held (main.c): the update mode's countdown */
         char d[2] = {(char)('0' + ui.uboot % 10u), 0};
