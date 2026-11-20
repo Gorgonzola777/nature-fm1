@@ -39,7 +39,9 @@ const tap = (b, hold = 60) => { ex.web_buttons(1 << b); render(hold); ex.web_but
 const key = (k, hold = 80) => { ex.web_keys(1 << KEY[k]); render(hold); ex.web_keys(0); render(80); };
 const turn = (role, d) => { for (let i = 0; i < Math.abs(d); i++) { ex.web_enc(role, Math.sign(d)); render(16); } };
 
-render(1500);
+render(700);
+check("the splash: NATURE and a scene", shot("splash") > 30);
+render(1600);
 check("boots into NATURE: a scene of many colours", shot("boot") > 40);
 peak = 0;
 render(3000);

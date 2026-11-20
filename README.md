@@ -2,25 +2,74 @@
 
 ![NATURE](assets/nature/card.png) ![screen](assets/nature/screen.png)
 
-**NATURE** turns the FM-1 into a generative soundscape machine: **wind, sea, rain, fire, birds and thunder**, all
-synthesised in real time (no samples), mixing and changing by themselves so the scene never repeats. A pixel-art
-landscape on the screen follows the sound: waves break when the surf hisses, lightning strikes with the thunder,
-sparks fly when the fire crackles, a bird on the pine sings when you hear it, and the person on the hill opens an
-umbrella when it rains.
+**A pocket window onto the weather.** NATURE turns the FM-1 into a generative nature machine: wind in the pines, waves
+breaking on a shore, rain, a crackling campfire, birdsong, crickets at night, wind chimes and thunder far away. It never
+loops and never repeats: every sound is made right now, by the FM-1 itself, and the scene keeps changing on its own.
 
-NATURE is built on [Felucca](https://github.com/hugelton/Felucca) by Leo Kuroshita (Hügelton Instruments): its hardware
-layer, sound core, USB and update path. The FM-1 runs NATURE only (`FELUCCA_NATURE_APP=0` builds Felucca with NATURE as
-one more engine instead).
+**[Try it in your browser](https://gorgonzola777.github.io/nature-fm1/)** (the same code the FM-1 runs, no FM-1
+needed) · **[Download](../../releases/latest)**
+
+## What it is
+
+Switch the FM-1 on and you are on a shore at dusk. A person sits on the hill, the sea rolls in, a bird sings in the
+pine. Press a white key and you are somewhere else: in a storm, a forest, by a campfire, out at night. Press a black key
+and something happens: thunder rolls, a big wave breaks, a gust shakes the trees. Press harder, and it happens harder.
+
+The screen is a pixel-art landscape that follows the sound, not a picture beside it: the waves on the screen break
+when you hear them break, lightning strikes with the thunder, sparks fly when the fire crackles, the bird sings when
+you hear it, the person opens an umbrella when it rains, the moon and the crickets come out at night.
+
+## How it works
+
+Nothing is recorded. Every layer is synthesised in real time, in fixed-point C on the FM-1's own chip:
+
+- **Wind**: pink noise through gusting band-pass filters, a whistle that rises in a storm, a low rumble under it.
+- **Sea**: waves on their own slow clock; each one swells, breaks into bright noise at its crest, then hisses away as
+  foam. A storm makes them bigger and closer together.
+- **Rain**: a hiss and thousands of single drops, each a tiny struck resonance; big drops now and then.
+- **Fire**: a flickering low roar and crackles in bursts, sparks in the scene.
+- **Birds**: four kinds of song (falling chirps, rising calls, trills, warbles), phrases of their own, quiet in a storm.
+- **Crickets**: pulsed trills of three insects, each with its own pitch and rhythm, out at night.
+- **Wind chimes**: struck bars in the key and scale you pick, rung by the gusts.
+- **Thunder**: long low rumbles that come by themselves when the mood is stormy and it rains.
+
+Over them, a slow **life** of its own: each layer's presence and the mood wander, so a place you leave alone drifts like
+real weather. **MOOD** is the one knob that matters most: calm to storm, and every layer answers it.
+
+Then the FM-1's own effects (reverb, echo, chorus, drive), a **LO-FI** stage (bit crush, sample rate, tape wobble, vinyl
+dust), a DJ **filter**, a slow **LFO** for any of it, and **TOUR**, which takes you from place to place by itself.
+
+## What it is for
+
+- **Sleep and rest**: pick a place, set the sleep timer (REC: 15 to 90 minutes), it fades out by itself.
+- **Focus**: rain or a campfire at a low volume, TOUR on, nothing to touch for hours.
+- **Music**: an ambient bed under your playing, live through the FM-1's USB audio into a DAW, or wind chimes in your
+  key. Black keys on the sequencer play thunder and waves in time.
+- **Play**: it is fun to make a storm with one hand.
+
+## Quick start
+
+1. Switch on: SHORE plays.
+2. White keys **F3 to E4** and **D5 to G5**: the places. **F4 to C5**: the layers on / off.
+3. Black keys: the events. Hold one and press harder.
+4. **KNOB 1**: MOOD, calm to storm. **Hold HOME** for the key map on the screen.
+5. **SAVE** keeps your sound for the next power-on.
 
 ## Install
 
-Install the `.fwsc` from the [releases](../../releases) (or from [The Firmware Hub](https://thefirmwarehub.com)) in
-Chrome or Edge over USB. The installer can always take you back to M-VAVE's official V15. Back up your projects first.
+- From [The Firmware Hub](https://thefirmwarehub.com) (once it is listed there): one click, in Chrome or Edge, over USB.
+- Or download `nature-X.Y.fwsc` from the [releases](../../releases) and install it with
+  [M-Flasher](https://github.com/jvitkauskas/m-flasher), or from this repository with
+  `python3 tools/fm1_install.py nature-X.Y.fwsc` (needs `pip install mido python-rtmidi`).
+- Back to M-VAVE's firmware at any time: [FM1 Workbench](https://open.m-vave.com/fm1-workbench) (V15).
+- Older and newer FM-1s alike (both flash chips). Back up your projects before changing firmware.
+- If something ever goes wrong: hold **OCT- and OCT+ for 5 s**, the FM-1 goes into the chip's update mode (the screen
+  goes dark) and any installer can write it again. Switch it off and on to leave that mode.
 
 ## Playing NATURE
 
-Switch the FM-1 on and NATURE plays: the whole screen is the scene, with the place's name on top and the layers and
-knobs below. Every key and knob does something, and the screen says what it did.
+The whole screen is the scene, with the place's name on top and the layers and knobs below. Every key, knob and button
+does something, and the screen says what it did.
 
 | Control | What it does |
 | --- | --- |

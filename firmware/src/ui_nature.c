@@ -10,6 +10,7 @@
 #define NS_H 50
 #define NS_HZ 33                                       /* the horizon */
 #define NS_X0 10                                       /* the scene on the canvas, 2 x 2 a pixel */
+static uint8_t ns_nodim;                               /* 1: no dimming when silent (the app's splash) */
 static int32_t ns_y0 = 11;                             /* the scene's top on the canvas (the app: below its header) */
 #define NS_Y0 ns_y0
 #define NC(h) ((uint16_t)(((((h) >> 19) & 0x1Fu) << 11) | ((((h) >> 10) & 0x3Fu) << 5) | (((h) >> 3) & 0x1Fu)))
@@ -482,7 +483,7 @@ static void graph_nature(track_t *t)
         }
     ns.flash = ns.flash > st ? (uint8_t)(ns.flash - st) : 0;
     /* not playing: the scene dimmed, how to start it */
-    if (!s->playing && s->fade <= 0) {
+    if (!s->playing && s->fade <= 0 && !ns_nodim) {
         for (y = 0; y < NS_H; y++)
             for (x = 0; x < NS_W; x++)
                 ns_px(x, y, ns_mix(ns_get(x, y), T_SURF, 150));   /* (the app says why) */

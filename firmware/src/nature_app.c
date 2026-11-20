@@ -795,6 +795,38 @@ static void nui_draw_bot(void)
     cv_blit(0, NUI_TOP_H);
 }
 
+/* the splash: NATURE, what it is, the version and Felucca's credit; a still of the scene under it */
+#ifndef FELUCCA_VERSION
+#define FELUCCA_VERSION ""
+#endif
+#define NUI_SPLASH_MS 1500u                            /* (main.c: how long it stays) */
+static void nui_splash(void)
+{
+    char v[24] = "NATURE ";
+    const char *src = FELUCCA_VERSION;
+    uint32_t i = 7;
+    while (*src && i < sizeof v - 1u)
+        v[i++] = *src++;
+    v[i] = 0;
+    cv_begin(240, NUI_TOP_H, NUI_BG);
+    cv_oy = 0;
+    nf_center(120, 14, "NATURE", NUI_SUN, 5);
+    nf_center(120, 62, "WIND  SEA  RAIN  FIRE  BIRDS", NUI_TEXT, 1);
+    nf_center(120, 76, "GENERATIVE SOUNDSCAPES", NUI_ACC, 1);
+    nf_center(120, 98, v, NUI_DIM, 1);
+    nf_center(120, 110, "BUILT ON FELUCCA - HUGELTON", NUI_OFF, 1);
+    cv_blit(0, 0);
+    cv_begin(240, NUI_BOT_H, NUI_BG);
+    cv_oy = 0;
+    ns_y0 = 6;
+    ns_nodim = 1;
+    graph_nature(&trk[0]);                             /* (the engine's memory still zero: a calm shore at dusk) */
+    ns_nodim = 0;
+    cv_blit(0, NUI_TOP_H);
+    lcd_sync();
+    ns_y0 = 20;
+}
+
 static void nui_frame(void)
 {
     static uint32_t kick;

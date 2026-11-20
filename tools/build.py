@@ -50,7 +50,7 @@ SDK_SHA256 = {
 }
 
 PRODUCT = "FM-1_628300"             # package identity (NATURE: FM-1_6283..); release builds are FM-1_6283XY
-VERSION = None                      # FELUCCA_VERSION for release builds (default: firmware/src/felucca.c)
+VERSION = "dev"                     # FELUCCA_VERSION: "dev" for test builds, vX.Y for releases (NATURE)
 # FELUCCA_CPU2 (firmware/src/felucca.c), unset or 1, the default (1.6.1): the second core is built in, its entry and
 # stacks (firmware/bsp/chip/fm1_cpu1.S) linked and its waiting loop (.c1_text) checked; MENU > SYSTEM > 2ND CORE starts it
 # (OFF by default: one core, as 1.6). FELUCCA_CPU2=0: none of it is built (1.6's one-core code and RAM)

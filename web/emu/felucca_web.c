@@ -270,7 +270,11 @@ static void web_power_on(void)
     settings_init();
     usb_serial_apply();
     lcd_init();
+#if FELUCCA_NATURE_APP
+    nui_splash();                         /* main.c: NATURE's splash */
+#else
     draw_splash();                        /* main.c: the splash (ui_draw.c) */
+#endif
     memset(&felucca_dbg, 0, sizeof felucca_dbg);
     felucca_dbg.magic = DBG_MAGIC;
     fm1_input_init();
@@ -284,7 +288,11 @@ static void web_power_on(void)
 #if !FELUCCA_NATURE_APP
     autosave_boot(boot_clean);            /* main.c: the last session's music (1.2, project.c) */
 #endif
+#if FELUCCA_NATURE_APP
+    web_boot_ms = fm1_ms + 30u + NUI_SPLASH_MS;
+#else
     web_boot_ms = fm1_ms + 430u;         /* main.c: 30 + 400 ms before the first frame */
+#endif
     web_booted = 1;
 }
 
