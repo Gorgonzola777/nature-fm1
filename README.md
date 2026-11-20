@@ -7,7 +7,8 @@ breaking on a shore, rain, a crackling campfire, birdsong, crickets at night, wi
 loops and never repeats: every sound is made right now, by the FM-1 itself, and the scene keeps changing on its own.
 
 **[Try it in your browser](https://gorgonzola777.github.io/nature-fm1/)** (the same code the FM-1 runs, no FM-1
-needed) · **[Download](../../releases/latest)**
+needed) · **[Download](../../releases/latest)** · **[Manual](docs/MANUAL.md)** ·
+**[Cheat sheet (PDF)](docs/NATURE-cheatsheet.pdf)**
 
 ## What it is
 
