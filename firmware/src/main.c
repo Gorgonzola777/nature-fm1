@@ -155,7 +155,11 @@ static void fm1_main(void)
         panel_setup();                        /* OCT- + OCT+ held at power-on */
         settings_save();
     }
+#if !FELUCCA_NATURE_APP
     autosave_boot(boot_clean);                /* (1.2) the last session's music, under the splash */
+#else
+    (void)boot_clean;                         /* NATURE: no music to bring back */
+#endif
     for (ms = 0; ms < 400u; ms += 10u) {      /* the splash; the pot followed (MIDI IN plays under it) */
         fm1_delay_ms(10);
         master_poll();
@@ -256,6 +260,16 @@ static void fm1_main(void)
         felucca_dbg.page = ui.page;
         felucca_dbg.home = ui.home;
         felucca_dbg.stage = 1;
+#if FELUCCA_NATURE_APP
+        nui_frame();                                  /* NATURE: its input, LEDs and screen (nature_app.c) */
+        settings_poll();
+        felucca_dbg.stage = 9;
+        while (fm1_ms - m < 15u) {                    /* ~60 frames/s at most */
+#if FELUCCA_OTA
+            ed_service();
+#endif
+        }
+#else
         ui_input();
         settings_poll();                              /* queued settings save: only while stopped */
         autosave_poll();                              /* (1.2) the music, stopped and idle: project.c */
@@ -269,6 +283,7 @@ static void fm1_main(void)
             ed_service();                       /* editor replies without waiting for the next frame */
 #endif
         }
+#endif
     }
 }
 

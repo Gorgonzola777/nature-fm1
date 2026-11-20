@@ -1,5 +1,4 @@
 /* SPDX-License-Identifier: MIT
- * Copyright (C) 2026 Gorgonzola777
  * NATURE: a generative soundscape engine for Felucca (M-VAVE FM-1).
  *
  * One held note plays a whole scene that never repeats: WIND, SEA, RAIN, FIRE and BIRDS, plus thunder
@@ -14,18 +13,15 @@
  *     TONE  dark .. bright: moves every filter; the key does the same (around C4), so low keys are
  *           darker / closer, high keys brighter / further. The track's FLT also moves it.
  *
- * The keys (engine_t.keys: chromatic from F3, the octave buttons move them, no scale):
- *   WHITE  latch: a white key starts the scene (it plays on with no key held), another white key retunes it
- *          (TONE follows the key), a short light tap on the same key fades it out (ATK / REL: the fade times);
- *          held or pressed, it plays the weather (pressure, below)
+ * The keys (engine_t.keys: chromatic from F3; the NATURE app owns the white keys, places and layers):
  *   BLACK  events: F#3 THUNDER, G#3 BIG WAVE, A#3 GUST, C#4 DOWNPOUR, D#4 CRACKLE, F#4 BIRD, G#4 BIRD CHORUS,
- *          A#4 CALM, C#5 STORM, D#5 SHUFFLE (the mix picks new targets now); F#5 = F#3. An event whose layer is off
- *          brings it in for a while (a boost that fades over ~10 s). A black key with no scene playing starts it.
- * Pressure (the FM-1's aftertouch, F3..C5; NAT_AT: the track's, 0..127; a MIDI keyboard's channel pressure too), on
- * the key held last: a white key pushes the weather toward a storm while pressed (it calms when let go); a black
- * key plays its event live: THUNDER rumbles louder, WAVE grows the wave, GUST blows harder, DOWNPOUR pours, CRACKLE
- * crackles more, BIRD sings more, CALM / STORM how far. NAT_AT_ON(t): the host switches the pressure on for NATURE.
- * The scene's amplitude is its own (engine_t.ownenv): the voice ends when the fade-out is done.
+ *          A#4 CALM, C#5 STORM, D#5 CRICKETS, F#5 SHUFFLE (the mix picks new targets now). An event whose layer is
+ *          off brings it in for a while (a boost that fades over ~10 s). Pressure (aftertouch; NAT_AT: the
+ *          track's, 0..127) on the key held plays the event live: louder thunder, a bigger wave, a harder gust ..
+ *   WHITE  start (or resume) the scene; nothing else here.
+ * Night (nat_t.night_tg, set by the host: 0 day .. 32767 night): crickets come with it (and the CRICKETS event).
+ * The layer levels and the mood glide to new values over ~2 s, so a new place fades in.
+ * The scene's amplitude is its own (engine_t.ownenv): the voice ends when it has faded out (playing = 0).
  *
  * Polyphony 1: the scene is one per part. Its state lives in the part's engine memory (engines.c eng_mem)
  * and runs on across notes, so retriggering a key does not restart the weather.
@@ -35,6 +31,7 @@
  * FE_OCT, the FE_NOISE_* pole constants. */
 
 enum { NL_WIND, NL_SEA, NL_RAIN, NL_FIRE, NL_BIRD, NL_COUNT };
+#define NAT_NCRICK 3                       /* crickets, each its own pitch and rhythm */
 
 #define NAT_BPS (FS / CTL)                 /* control blocks a second (1378 at 44.1 kHz) */
 #define NAT_HZ_INC ((uint32_t)((1ull << 32) / FS))   /* phase increment of 1 Hz (97391 at 44.1 kHz) */
@@ -76,12 +73,16 @@ typedef struct {
     /* the keys: latch, the key the scene is tuned to, the fade (Q15), the events' boosts (Q15) */
     uint8_t playing, chorus, last_key;    /* last_key: the event + 1 of the key pressed last, 0 = a white key */
     int32_t press;                        /* the pressure, smoothed, Q15 */
-    uint8_t tap;                          /* the scene's own key pressed again: a tap (short, light) stops it */
-    int32_t tap_blocks, tap_peak;
+    int32_t lv[NL_COUNT], mood_s;         /* the levels and the mood, gliding to the parameters (Q23) */
+    int32_t night_tg, night_s;            /* night: the host's target (Q15), gliding (Q23) */
+    int32_t cr_boost;                     /* the CRICKETS event (Q15) */
+    uint32_t cr_ph[NAT_NCRICK];
+    int32_t cr_cnt[NAT_NCRICK], cr_pulses[NAT_NCRICK], cr_env[NAT_NCRICK], cr_on[NAT_NCRICK];
     int32_t scene_note, fade, boost[NL_COUNT];
     /* for the screen (ui: the pixel scene reads these, written once a block) */
     int16_t v_lvl[NL_COUNT];      /* each layer's level now, Q15 (after EVOL; BIRD after the storm) */
     int16_t v_mood, v_gust;       /* Q15 */
+    int16_t v_night, v_crick;     /* night (Q15), the crickets' level (Q15) */
     uint8_t v_crack;              /* a crackle burst started: 255, the screen lets it fade */
 } nat_t;
 
@@ -166,6 +167,9 @@ static void nat_init(nat_t *s, const voice_t *v)
     s->wave_ph = (uint32_t)nat_urand(s, 0, 0x7FFF) << 16;
     s->b_state = 0;
     s->b_cnt = FE_T(nat_urand(s, 300, 2500));
+    s->scene_note = 60;
+    for (k = 0; k < NAT_NCRICK; k++)
+        s->cr_cnt[k] = FE_T(nat_urand(s, 200, 1500));
     s->init = 1;
 }
 
@@ -242,19 +246,22 @@ static void nat_bird_block(nat_t *s, int32_t active)
 }
 
 /* -------------------------------------------------------------- engine --- */
-enum { EV_THUNDER, EV_WAVE, EV_GUST, EV_DOWNPOUR, EV_CRACKLE, EV_BIRD, EV_CHORUS, EV_CALM, EV_STORM, EV_SHUFFLE };
+enum { EV_THUNDER, EV_WAVE, EV_GUST, EV_DOWNPOUR, EV_CRACKLE, EV_BIRD, EV_CHORUS, EV_CALM, EV_STORM, EV_CRICKETS,
+       EV_SHUFFLE, EV_COUNT };
 
-/* a black key's event (0..9), -1 for a white key: from F#3 (54), two octaves of five black keys */
+#ifndef NAT_OCT
+#define NAT_OCT 0
+#endif
+/* a black key's event (EV_*), -1 for a white key: the 11 black keys from F#3 (key 1) to F#5 (key 25) */
 static int32_t nat_event_of(uint32_t note)
 {
-    static const int8_t IDX[12] = {0, -1, 1, -1, 2, -1, -1, 3, -1, 4, -1, -1};   /* from F#: F# G# A# C# D# */
-    int32_t n = (int32_t)note - 54, o, i;
-    n += 240;                                          /* (non-negative: whole octaves) */
-    i = IDX[n % 12];
-    if (i < 0)
-        return -1;
-    o = (n / 12) & 1;
-    return o * 5 + i;
+    static const int8_t EVK[24] = {-1, EV_THUNDER, -1, EV_WAVE, -1, EV_GUST, -1, -1, EV_DOWNPOUR, -1, EV_CRACKLE, -1,
+                                   -1, EV_BIRD, -1, EV_CHORUS, -1, EV_CALM, -1, -1, EV_STORM, -1, EV_CRICKETS, -1};
+    int32_t k = (int32_t)note - 53 - 12 * (int32_t)(NAT_OCT);
+    if (k == 25)
+        return EV_SHUFFLE;
+    k = (k % 24 + 24) % 24;                            /* (another octave: the same two octaves again) */
+    return EVK[k];
 }
 
 static void nat_event(nat_t *s, int32_t ev)
@@ -301,6 +308,9 @@ static void nat_event(nat_t *s, int32_t ev)
         s->storm_cnt = FE_T(20000);
         s->boost[NL_WIND] = s->boost[NL_RAIN] = 26000;
         break;
+    case EV_CRICKETS:
+        s->cr_boost = 32767;
+        break;
     default: {                                         /* SHUFFLE */
         int32_t k;
         for (k = 0; k < NL_COUNT; k++)
@@ -325,24 +335,9 @@ static void nature_note_on(track_t *t, voice_t *v)
         NAT_AT_ON(t);
     }
     s->last_key = (uint8_t)(ev + 1);
-    if (ev >= 0) {
+    if (ev >= 0)
         nat_event(s, ev);
-        if (!s->playing) {
-            s->playing = 1;
-            if (!s->scene_note)
-                s->scene_note = 60;
-        }
-        return;
-    }
-    if (!s->playing) {
-        s->playing = 1;
-        s->scene_note = v->note;
-    } else if (s->scene_note == v->note) {
-        s->tap = 1;                                    /* the same key again: a tap stops it (render decides) */
-        s->tap_blocks = s->tap_peak = 0;
-    } else {
-        s->scene_note = v->note;                       /* another: retune */
-    }
+    s->playing = 1;                                    /* any key: the scene plays (again, after a pause) */
 }
 
 /* the voice ends when the scene has faded out */
@@ -354,9 +349,6 @@ static int nature_done(track_t *t, voice_t *v)
 }
 
 /* the keys: chromatic from F3, the octave buttons move them (NAT_OCT: the host's octave, 0 = none) */
-#ifndef NAT_OCT
-#define NAT_OCT 0
-#endif
 static int32_t nature_keys(const track_t *t, uint32_t k)
 {
     (void)t;
@@ -370,7 +362,8 @@ static void nature_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
     int32_t lvl[NL_COUNT], evol = p[P_E6], mood, calm, tone, k, g, lo;
     nat_c_t cw, cw2, cwl, csl, csh, crh, crd, crb, cfl, cfc, ctl;
     int32_t wamp = 0, whis = 0, rumble = 0, hiss = 0, rthr = 0, rbig = 0, rhiss = 0, roar = 0, cthr = 0;
-    int32_t benv0 = 0, benv1 = 0, thamp = 0;
+    int32_t benv0 = 0, benv1 = 0, thamp = 0, crl = 0, cre0[NAT_NCRICK], cre1[NAT_NCRICK];
+    uint32_t crinc[NAT_NCRICK];
     uint32_t binc = 0, vinc = 0, i;
     if (!s->init)
         nat_init(s, v);
@@ -385,9 +378,11 @@ static void nature_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
     /* -------- the generative mix: presence of each layer (1 - EVOL * 0.78 .. 1), the mood's wander */
     lo = 32767 - evol * 200;
     for (k = 0; k < NL_COUNT; k++) {
-        int32_t L = p[P_E0 + k];
+        int32_t L;
         nat_walk(s, &s->wan[k], &s->wan_tg[k], &s->wan_cnt[k], lo, 32767, 11000, 41000, 12);
-        lvl[k] = L ? (nat_lvl(L) * (s->wan[k] >> 8)) >> 15 : 0;
+        s->lv[k] += ((nat_lvl(p[P_E0 + k]) << 8) - s->lv[k]) >> (11 + FE_OCT);   /* glide ~1.5 s */
+        L = s->lv[k] >> 8;
+        lvl[k] = L > 40 ? (L * (s->wan[k] >> 8)) >> 15 : 0;
         if (s->boost[k]) {                             /* an event's boost: at least ~75 % while it lasts */
             int32_t b = (s->boost[k] * 24000) >> 15;
             if (b > lvl[k])
@@ -398,27 +393,18 @@ static void nature_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
         }
     }
     nat_walk(s, &s->storm, &s->storm_tg, &s->storm_cnt, -evol * 120, evol * 120, 20000, 80000, 13);
-    mood = clamp(p[P_E5] * 258 + (s->storm >> 8), 0, 32767);
+    s->mood_s += ((p[P_E5] * 258 << 8) - s->mood_s) >> (11 + FE_OCT);
+    s->night_s += ((clamp(s->night_tg, 0, 32767) << 8) - s->night_s) >> (12 + FE_OCT);
+    mood = clamp((s->mood_s >> 8) + (s->storm >> 8), 0, 32767);
     {   /* pressure on the key held last */
         int32_t pr = v->gate ? (int32_t)(NAT_AT(t)) * 258 : 0;
         s->press += (pr - s->press) >> (4 + FE_OCT);
         pr = s->press;
-        if (s->tap) {                                  /* a tap: let go within 0.4 s, hardly pressed */
-            s->tap_blocks++;
-            if (pr > s->tap_peak)
-                s->tap_peak = pr;
-            if (!v->gate) {
-                if (s->tap_blocks < FE_T(550) && s->tap_peak < 6000)
-                    s->playing = 0;
-                s->tap = 0;
-            } else if (s->tap_blocks >= FE_T(550)) {
-                s->tap = 0;                            /* held: it plays the weather */
-            }
-        }
         if (pr > 300) {
             switch (s->last_key) {
-            case 0:                                    /* a white key: the weather leans into a storm */
-                mood = clamp(mood + ((pr * 23) >> 5), 0, 32767);
+            case EV_CRICKETS + 1:
+                if (pr > s->cr_boost)
+                    s->cr_boost = pr;
                 break;
             case EV_THUNDER + 1:
                 if (pr > s->thun)
@@ -563,6 +549,38 @@ static void nature_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
         nat_bird_block(s, 0);
         s->b_env = 0;
     }
+    /* -------- crickets: at night (calm nights most), or called: pulsed trills of a high sine */
+    s->cr_boost -= (s->cr_boost >> (13 + FE_OCT)) + (s->cr_boost > 0);
+    crl = ((((s->night_s >> 8) * calm) >> 15) * 24000) >> 15;
+    if (s->cr_boost > crl)
+        crl = s->cr_boost;
+    s->v_night = (int16_t)(s->night_s >> 8);
+    s->v_crick = (int16_t)crl;
+    for (k = 0; k < NAT_NCRICK; k++) {
+        static const int16_t CR_HZ[NAT_NCRICK] = {4400, 3900, 5100};
+        cre0[k] = s->cr_env[k];
+        if (--s->cr_cnt[k] <= 0) {
+            if (s->cr_pulses[k] > 0)
+                s->cr_pulses[k]--;
+            if (s->cr_pulses[k] > 0) {
+                s->cr_on[k] = s->cr_pulses[k] & 1;     /* odd: a pulse ~10 ms, even: the gap ~16 ms */
+                s->cr_cnt[k] = FE_T(s->cr_on[k] ? 14 : 22);
+            } else if (crl > 300 && (nat_rnd(s) & 3u)) {
+                s->cr_pulses[k] = nat_urand(s, 3, 5) * 2;   /* a chirp of 3..5 pulses */
+                s->cr_on[k] = 1;
+                s->cr_cnt[k] = FE_T(14);
+            } else {
+                s->cr_on[k] = 0;
+                s->cr_cnt[k] = FE_T(nat_urand(s, 350, 1400));   /* 0.25 .. 1 s between chirps */
+            }
+        }
+        s->cr_env[k] += ((s->cr_on[k] ? 32767 : 0) - s->cr_env[k]) >> 1;
+        cre1[k] = s->cr_env[k];
+        crinc[k] = (uint32_t)(CR_HZ[k] + ((CR_HZ[k] * (p[P_E7] - 64)) >> 9)) * NAT_HZ_INC;
+    }
+    if (crl <= 300)
+        for (k = 0; k < NAT_NCRICK; k++)
+            cre0[k] = cre1[k] = 0;
     /* -------- thunder: in a storm with rain, now and then a long low rumble */
     if (lvl[NL_RAIN] && mood > 20000 && s->thun < 3000 &&
         nat_rnd(s) < (uint32_t)((mood - 20000) * (lvl[NL_RAIN] >> 10)) * 4u)
@@ -634,6 +652,16 @@ static void nature_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
             s->b_vph += vinc;
             y = (sine_i(s->b_ph) * e) >> 15;
             acc += ((((y >> 1) * (lvl[NL_BIRD] >> 3)) >> 12) * NAT_GAIN[NL_BIRD]) >> 8;
+        }
+        if (crl > 300) {
+            int32_t cy = 0;
+            for (k = 0; k < NAT_NCRICK; k++)
+                if (cre0[k] | cre1[k]) {
+                    int32_t e = cre0[k] + (((cre1[k] - cre0[k]) * (int32_t)i) >> CTL_LOG2);
+                    s->cr_ph[k] += crinc[k];
+                    cy += (sine_i(s->cr_ph[k]) * e) >> 15;
+                }
+            acc += ((((cy >> 1) * (crl >> 3)) >> 12) * 70) >> 8;
         }
         if (thamp) {
             y = clamp(nat_svf(&ctl, &s->t_lp, s->brown2, 0), -60000, 60000);

@@ -38,6 +38,13 @@
 #ifndef FELUCCA_NATURE
 #define FELUCCA_NATURE 1         /* the NATURE engine (eng_nature.c): generative soundscapes, after SLICE / ADPCM */
 #endif
+#ifndef FELUCCA_NATURE_APP
+#define FELUCCA_NATURE_APP FELUCCA_NATURE   /* the FM-1 is NATURE only: nature_app.c has the screen, the keys, the knobs,
+                                             * the LEDs (main.c); 0 = Felucca with NATURE as one more engine */
+#endif
+#if FELUCCA_NATURE_APP && !FELUCCA_NATURE
+#error "FELUCCA_NATURE_APP needs FELUCCA_NATURE"
+#endif
 #define ENGI_NATURE (13u + FELUCCA_SLICE + FELUCCA_ADPCM)
 #define NENGINES (13 + FELUCCA_SLICE + FELUCCA_ADPCM + FELUCCA_NATURE)   /* SLICE (13), then ADPCM (14): the other engines keep their
                                                          * numbers */

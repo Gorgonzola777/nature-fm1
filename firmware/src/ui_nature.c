@@ -1,5 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 Gorgonzola777 */
+/* SPDX-License-Identifier: GPL-3.0-only */
 /* NATURE's screen: a 110 x 50 pixel-art landscape drawn x2 in the graph panel (x 10..230, y 11..111), alive with the
  * engine's own state (eng_nature.c nat_t: the layers' levels, the mood, the gusts, the waves, thunder, crackles,
  * the bird singing). Dusk when calm, grey when stormy; a person sits on the hill (an umbrella in the rain), a fire
@@ -11,7 +10,8 @@
 #define NS_H 50
 #define NS_HZ 33                                       /* the horizon */
 #define NS_X0 10                                       /* the scene on the canvas, 2 x 2 a pixel */
-#define NS_Y0 11
+static int32_t ns_y0 = 11;                             /* the scene's top on the canvas (the app: below its header) */
+#define NS_Y0 ns_y0
 #define NC(h) ((uint16_t)(((((h) >> 19) & 0x1Fu) << 11) | ((((h) >> 10) & 0x3Fu) << 5) | (((h) >> 3) & 0x1Fu)))
 #define NS_NDROP 70
 #define NS_NSPARK 16
@@ -74,6 +74,8 @@ static inline int32_t ns_sin(uint32_t ph) { return sine_i(ph); }   /* Q15 */
 enum { PC_SKY0, PC_SKY1, PC_SKY2, PC_SKY3, PC_SEA0, PC_SEA1, PC_SEAL, PC_LAND, PC_LAND2, PC_CLOUD, PC_CLOUD2, PC_N };
 static const uint32_t NS_CALM[PC_N] = {0x1d1a3b, 0x5b2a5e, 0xc4506a, 0xf5a65b, 0x173a5e, 0x1f5f7a, 0xf7c873,
                                        0x1f3d2b, 0x2c5a3a, 0xe88a8a, 0xb8607a};
+static const uint32_t NS_NIGHT[PC_N] = {0x070a1a, 0x0d1530, 0x1a2448, 0x2b3560, 0x06121f, 0x0c2236, 0xc8d4f0,
+                                        0x0c1a14, 0x13261c, 0x3a4466, 0x262d48};
 static const uint32_t NS_STORM[PC_N] = {0x101318, 0x1c222c, 0x2b3440, 0x3d4855, 0x0f1d26, 0x1d3340, 0x5d7180,
                                         0x121c17, 0x1b2a21, 0x3a4350, 0x262d36};
 #define C_WHITE NC(0xf4f1e8u)
@@ -99,6 +101,7 @@ static const uint32_t NS_STORM[PC_N] = {0x101318, 0x1c222c, 0x2b3440, 0x3d4855, 
 #define C_BIRD NC(0x141018u)
 #define C_BOLT NC(0xfffbe6u)
 #define C_GLOW NC(0xfff0c8u)
+#define C_MOON NC(0xe8ecf8u)
 static const uint8_t NS_BAYER[4][4] = {{0, 8, 2, 10}, {12, 4, 14, 6}, {3, 11, 1, 9}, {15, 7, 13, 5}};
 
 static void ns_init(void)
@@ -137,7 +140,7 @@ static void graph_nature(track_t *t)
     nat_t *s = NAT_ST(t);
     int32_t wind = s->v_lvl[NL_WIND], sea = s->v_lvl[NL_SEA] > 650, rain = s->v_lvl[NL_RAIN], fire = s->v_lvl[NL_FIRE];
     int32_t bird = s->v_lvl[NL_BIRD], mood = s->v_mood, gust = s->v_gust;
-    int32_t dark, windv, sun_a, shore, x, y, k, i, ncl;
+    int32_t dark, windv, sun_a, shore, x, y, k, i, ncl, nt;
     uint16_t pal[PC_N], band[4];
     uint32_t tt;
     if (!ns.init)
@@ -150,8 +153,9 @@ static void graph_nature(track_t *t)
     }
     dark = clamp(((mood * 294) >> 15) + ((rain * 64) >> 15), 0, 256);      /* 0..256 */
     windv = ((wind >> 7) * (77 + (gust >> 7))) >> 8;                        /* Q8, 0..~330 */
+    nt = s->v_night >> 7;                                                   /* night 0..256 */
     for (k = 0; k < PC_N; k++)
-        pal[k] = ns_mix(NC(NS_CALM[k]), NC(NS_STORM[k]), dark);
+        pal[k] = ns_mix(ns_mix(NC(NS_CALM[k]), NC(NS_NIGHT[k]), nt), NC(NS_STORM[k]), dark);
     shore = sea ? 46 : NS_W;
 
     /* lightning: a new strike when the thunder jumps up */
@@ -178,13 +182,26 @@ static void graph_nature(track_t *t)
             ns_px(x, y, c);
         }
     }
-    /* stars, calm only */
-    if (dark < 100)
-        for (k = 0; k < 18; k++)
-            if (((tt >> 2) + ns.st_ph[k]) % 7u)
-                ns_blend(ns.st_x[k], ns.st_y[k], C_WHITE, 256 - dark * 2);
+    /* stars, calm only (bright at night) */
+    {
+        int32_t sa = clamp(256 - dark * 2, 0, 256);
+        if (nt > sa)
+            sa = nt - (dark >> 1);
+        if (sa > 0)
+            for (k = 0; k < 18; k++)
+                if (((tt >> 2) + ns.st_ph[k]) % 7u)
+                    ns_blend(ns.st_x[k], ns.st_y[k] + (nt > 128 ? (k & 1) * 10 : 0), C_WHITE, sa);
+    }
+    /* the moon at night: a crescent */
+    if (nt > 64 && dark < 200) {
+        int32_t cx = 84, cy = 9, a = clamp((nt - 64) * 2 - dark, 0, 256);
+        for (y = cy - 5; y <= cy + 5; y++)
+            for (x = cx - 5; x <= cx + 5; x++)
+                if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= 25 && (x - cx - 2) * (x - cx - 2) + (y - cy + 1) * (y - cy + 1) > 16)
+                    ns_blend(x, y, C_MOON, a);
+    }
     /* the sun sinking into the sea, striped; fades in a storm */
-    sun_a = clamp(256 - ((dark * 410) >> 8), 0, 256);
+    sun_a = clamp(256 - ((dark * 410) >> 8) - nt, 0, 256);
     if (sun_a) {
         int32_t cx = 80, cy = NS_HZ + 1, r = 8;
         for (y = cy - r; y <= cy && y < NS_HZ; y++) {
@@ -262,13 +279,18 @@ static void graph_nature(track_t *t)
             } else {
                 c = y == top || (y == top + 1 && (x * 7) % 3 == 0) ? pal[PC_LAND2] : pal[PC_LAND];
             }
-            ns_px(x, y, ns_mix(c, pal[PC_SKY1], (64 * dark) >> 8));
+            ns_px(x, y, ns_mix(c, pal[PC_SKY1], (64 * dark + 120 * nt) >> 8));
         }
         if (!beach && (x * 5) % 3 == 0 && top > 0) {
             int32_t lean = (windv * 2 + ((ns_sin(tt * 205000000u + (uint32_t)x * 683565000u) * windv) >> 15)) >> 8;
             ns_px(x + lean, top - 1, pal[PC_LAND2]);
         }
     }
+    if (sea)                                           /* under the beach: shallow water over the sand, deepening */
+        for (x = shore; x < NS_W; x++)
+            for (y = ns_top(x, sea, shore) + 3; y < NS_H; y++)
+                ns_px(x, y, ns_mix(ns_mix(C_SAND, pal[PC_SEA1], 150), pal[PC_SEA0],
+                                   clamp((y - ns_top(x, sea, shore) - 3) * 64, 0, 256)));
     if (sea) {                                         /* foam licking the sand */
         int32_t crash = s->crash + s->foam;
         for (x = shore; x < NS_W; x++) {
@@ -293,7 +315,7 @@ static void graph_nature(track_t *t)
                 int32_t half = i % 4 != 3 ? (th - i) * 42 / 100 : (th - i) * 30 / 100, off = (sway * i / th) >> 8;
                 y = gy - 3 - i;
                 for (x = tx - half + off; x <= tx + half + off; x++)
-                    ns_px(x, y, ns_mix(x < tx + off ? C_PINE2 : C_PINE, pal[PC_SKY1], (64 * dark) >> 8));
+                    ns_px(x, y, ns_mix(x < tx + off ? C_PINE2 : C_PINE, pal[PC_SKY1], (64 * dark + 130 * nt) >> 8));
             }
         }
     }
@@ -367,7 +389,7 @@ static void graph_nature(track_t *t)
         const uint16_t BC[4] = {C_PANTS, C_HOOD, C_HAIR, C_SKIN};
         int32_t hx = 25, hy = ns_top(25, sea, shore);
         for (k = 0; k < 15; k++)
-            ns_px(hx + BODY[k][0], hy - BODY[k][1], ns_mix(BC[(uint32_t)BODY[k][2]], pal[PC_SKY1], (51 * dark) >> 8));
+            ns_px(hx + BODY[k][0], hy - BODY[k][1], ns_mix(BC[(uint32_t)BODY[k][2]], pal[PC_SKY1], (51 * dark + 90 * nt) >> 8));
         if (rain > 9830) {
             int32_t ux = hx + 1, uy = hy - 10;
             for (x = ux - 4; x <= ux + 4; x++)
@@ -439,8 +461,7 @@ static void graph_nature(track_t *t)
     if (!s->playing && s->fade <= 0) {
         for (y = 0; y < NS_H; y++)
             for (x = 0; x < NS_W; x++)
-                ns_px(x, y, ns_mix(ns_get(x, y), T_SURF, 150));
-        cv_text_in(0, 44, 240, &AF_M, "PRESS A WHITE KEY", T_TEXT, T_SURF);
+                ns_px(x, y, ns_mix(ns_get(x, y), T_SURF, 150));   /* (the app says why) */
     }
 }
 #endif /* FELUCCA_NATURE */

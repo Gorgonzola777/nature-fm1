@@ -128,4 +128,7 @@ static __attribute__((noinline)) int c1_wait(void) { return fm1_cpu1_wait(); }  
 #endif
 #include "keytouch.c"           /* 1.8 AFTERTOUCH: the keys' pressure (MPL-2.0, from fm1-base) */
 #include "master.c"              /* the MASTER pot (#137: read before the audio starts) */
+#if FELUCCA_NATURE_APP
+#include "nature_app.c"          /* NATURE, the app: the UI instead of Felucca's (main.c) */
+#endif
 #include "main.c"
