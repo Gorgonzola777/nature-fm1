@@ -18,7 +18,7 @@ static int32_t ns_y0 = 11;                             /* the scene's top on the
 #define NS_NSMOKE 12
 
 static struct {
-    uint32_t t, rng, sway_ph;
+    uint32_t t, rng, sway_ph, last_ms;
     uint8_t init, flash, crackglow;
     int16_t cl_x[7], cl_y[7], cl_s[7];                 /* clouds: x Q4, y, size */
     int16_t dr_x[NS_NDROP], dr_y[NS_NDROP];            /* rain drops, Q4 */
@@ -142,10 +142,22 @@ static void graph_nature(track_t *t)
     int32_t bird = s->v_lvl[NL_BIRD], mood = s->v_mood, gust = s->v_gust;
     int32_t dark, windv, sun_a, shore, x, y, k, i, ncl, nt;
     uint16_t pal[PC_N], band[4];
-    uint32_t tt;
+    uint32_t tt, st, j;
     if (!ns.init)
         ns_init();
-    tt = ++ns.t;
+    /* the steps of animation due: one each 1/30 s of the clock, however often the screen is drawn (a slow frame
+     * leaves nothing slower: the scene moves as far as time went) */
+    st = (fm1_ms - ns.last_ms) / 33u;
+    if (st > 6u || !ns.last_ms) {                      /* (a long gap: the menu, an update; no catching up) */
+        st = 1;
+        ns.last_ms = fm1_ms;
+    } else {
+        ns.last_ms += st * 33u;
+    }
+    if (!st)
+        st = 1;                                        /* (drawn twice in one step: it moves anyway, a little) */
+    ns.t += st;
+    tt = ns.t;
     if (!s->init) {                                    /* no scene yet: the engine's defaults, still */
         wind = 4000;
         sea = 1;
@@ -217,7 +229,7 @@ static void graph_nature(track_t *t)
     for (k = 0; k < ncl; k++) {
         static const int8_t OX[4] = {0, 7, -7, 2}, OY[4] = {0, 1, 1, -4}, RR[4] = {6, 5, 4, 4};   /* x10 of the size */
         int32_t cx, cy, sz = ns.cl_s[k], j;
-        ns.cl_x[k] = (int16_t)(ns.cl_x[k] + 1 + ((windv * 6) >> 8) + (k >> 2));
+        ns.cl_x[k] = (int16_t)(ns.cl_x[k] + (int32_t)st * (1 + ((windv * 6) >> 8) + (k >> 2)));
         if ((ns.cl_x[k] >> 4) - sz * 2 > NS_W) {
             ns.cl_x[k] = (int16_t)(-(sz * 2) * 16);
             ns.cl_y[k] = (int16_t)ns_ur(2, 18 - ((dark * 8) >> 8));
@@ -300,7 +312,7 @@ static void graph_nature(track_t *t)
         static const uint8_t TX_LAND[6][2] = {{8, 15}, {17, 11}, {58, 13}, {70, 17}, {84, 12}, {99, 15}};
         const uint8_t (*tr)[2] = sea ? TX_SEA : TX_LAND;
         int32_t ntr = sea ? 2 : 6, sway;
-        ns.sway_ph += 54700000u + (uint32_t)gust * 5215u;
+        ns.sway_ph += st * (54700000u + (uint32_t)gust * 5215u);
         sway = ((((ns_sin(ns.sway_ph) * windv) >> 15) * 22) / 10) + windv * 3 / 2;   /* Q8 px */
         for (k = 0; k < ntr; k++) {
             int32_t tx = tr[k][0], th = tr[k][1], gy = ns_top(tx, sea, shore);
@@ -348,7 +360,7 @@ static void graph_nature(track_t *t)
                         i--;
                     }
             }
-            if (tt % 5u == 0)
+            if (tt / 5u != (tt - st) / 5u)
                 for (k = 0; k < NS_NSMOKE; k++)
                     if (!ns.sm_life[k]) {
                         ns.sm_x[k] = (int16_t)(fx * 16);
@@ -357,20 +369,22 @@ static void graph_nature(track_t *t)
                         break;
                     }
         }
-        ns.crackglow = ns.crackglow > 40 ? (uint8_t)(ns.crackglow - 40) : 0;
+        ns.crackglow = ns.crackglow > 40u * st ? (uint8_t)(ns.crackglow - 40u * st) : 0;
         for (k = 0; k < NS_NSPARK; k++)
             if (ns.sp_life[k]) {
-                ns.sp_x[k] = (int16_t)(ns.sp_x[k] + ns.sp_vx[k]);
-                ns.sp_y[k] = (int16_t)(ns.sp_y[k] + ns.sp_vy[k]);
-                ns.sp_vy[k] = (int16_t)(ns.sp_vy[k] + 1);
-                ns.sp_life[k]--;
+                for (j = 0; j < st && ns.sp_life[k]; j++) {
+                    ns.sp_x[k] = (int16_t)(ns.sp_x[k] + ns.sp_vx[k]);
+                    ns.sp_y[k] = (int16_t)(ns.sp_y[k] + ns.sp_vy[k]);
+                    ns.sp_vy[k] = (int16_t)(ns.sp_vy[k] + 1);
+                    ns.sp_life[k]--;
+                }
                 ns_px(ns.sp_x[k] >> 4, ns.sp_y[k] >> 4, ns.sp_life[k] > 6 ? C_F1 : C_F2);
             }
         for (k = 0; k < NS_NSMOKE; k++)
             if (ns.sm_life[k]) {
-                ns.sm_x[k] = (int16_t)(ns.sm_x[k] + 2 + ((windv * 8) >> 8));
-                ns.sm_y[k] = (int16_t)(ns.sm_y[k] - 4);
-                ns.sm_life[k]--;
+                ns.sm_x[k] = (int16_t)(ns.sm_x[k] + (int32_t)st * (2 + ((windv * 8) >> 8)));
+                ns.sm_y[k] = (int16_t)(ns.sm_y[k] - 4 * (int32_t)st);
+                ns.sm_life[k] = ns.sm_life[k] > st ? (uint8_t)(ns.sm_life[k] - st) : 0;
                 if (ns.sm_life[k] % 3u)
                     ns_blend(ns.sm_x[k] >> 4, ns.sm_y[k] >> 4, C_SMOKE, ns.sm_life[k] * 256 / 40);
             }
@@ -412,7 +426,7 @@ static void graph_nature(track_t *t)
     }
     if (ns.fl_x >= -(5 << 4) && ns.fl_x != -1) {
         static const int8_t FL[4][2] = {{0, 0}, {4, 2}, {8, -1}, {12, 3}};
-        ns.fl_x = (int16_t)(ns.fl_x + 8);
+        ns.fl_x = (int16_t)(ns.fl_x + 8 * (int32_t)st);
         for (k = 0; k < 4; k++) {
             int32_t bx = (ns.fl_x >> 4) - FL[k][0], by = ns.fl_y + FL[k][1], up = (int32_t)((tt / 4u + (uint32_t)FL[k][0]) & 1u);
             if (by >= 0 && by < NS_HZ)
@@ -448,8 +462,8 @@ static void graph_nature(track_t *t)
         if (ns.ndrops > want)
             ns.ndrops = (uint8_t)want;
         for (k = 0; k < ns.ndrops; k++) {
-            ns.dr_x[k] = (int16_t)(ns.dr_x[k] + slant * 16 / 10);
-            ns.dr_y[k] = (int16_t)(ns.dr_y[k] + 42);
+            ns.dr_x[k] = (int16_t)(ns.dr_x[k] + (int32_t)st * slant * 16 / 10);
+            ns.dr_y[k] = (int16_t)(ns.dr_y[k] + 42 * (int32_t)st);
             if ((ns.dr_y[k] >> 4) >= NS_H || (ns.dr_x[k] >> 4) >= NS_W + 5) {
                 ns.dr_x[k] = (int16_t)(ns_ur(-20, NS_W) * 16);
                 ns.dr_y[k] = (int16_t)(ns_ur(-8, 0) * 16);
@@ -466,8 +480,7 @@ static void graph_nature(track_t *t)
             for (x = x0; x < x0 + 5; x++)
                 ns_blend(x, yy, C_WHITE, 64);
         }
-    if (ns.flash)
-        ns.flash--;
+    ns.flash = ns.flash > st ? (uint8_t)(ns.flash - st) : 0;
     /* not playing: the scene dimmed, how to start it */
     if (!s->playing && s->fade <= 0) {
         for (y = 0; y < NS_H; y++)

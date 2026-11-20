@@ -1,0 +1,51 @@
+# NATURE in the browser: the emulator (web/emu, Felucca's) built on every push to main, checked in Node with screens
+# kept as the run's artifact (emu-shots), and published on GitHub Pages as the demo (the hub card's "play" link).
+name: emulator
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  emu:
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 -m pip install Pillow fonttools
+      - name: Generated headers (fonts, tables, samples)
+        run: python3 -c "import sys; sys.path.insert(0, 'tools'); import build; build.generate()"
+      - uses: mymindstorm/setup-emsdk@v14
+      - name: Build the emulator
+        run: EMU_PREVIEW=0 sh web/emu/build.sh
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: NATURE in the emulator (checks, screens, cost)
+        run: node web/emu/nature_emu.mjs build/emu/felucca.wasm build/emu-shots
+      - name: Screens as PNG
+        if: always()
+        run: python3 tools/nature_shots.py build/emu-shots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: emu-shots
+          path: build/emu-shots/*.png
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/emu
+      - id: deploy
+        uses: actions/deploy-pages@v4

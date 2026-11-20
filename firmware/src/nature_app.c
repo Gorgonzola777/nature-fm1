@@ -849,7 +849,10 @@ static void nui_frame(void)
     if ((nui.frame % 120u) == 0)
         nui.bot_sig = 0;                                /* (the HUD again now and then: after an update's screens) */
     nui_leds();
-    if (!(nui.frame++ & 1u))                            /* the scene: every other frame (~30 a second) */
+    /* one strip a frame: the scene on even frames (~30 a second), the HUD on odd ones when it changed. Two blits in
+     * one frame made the second wait for the first's DMA, and a knob turned (the HUD every frame) slowed the scene */
+    if (!(nui.frame++ & 1u))
         nui_draw_top();
-    nui_draw_bot();
+    else
+        nui_draw_bot();
 }
