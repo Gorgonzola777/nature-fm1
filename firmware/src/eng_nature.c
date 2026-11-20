@@ -76,6 +76,9 @@ typedef struct {
     int32_t lv[NL_COUNT], mood_s;         /* the levels and the mood, gliding to the parameters (Q23) */
     int32_t night_tg, night_s;            /* night: the host's target (Q15), gliding (Q23) */
     int32_t cr_boost;                     /* the CRICKETS event (Q15) */
+    /* the host's settings (0 = the default): the glide's shift (blocks: 2^n, 6..13), the events' fade shift (11..15),
+     * the crickets' and the thunder's amounts (64 = as designed, 0..127) */
+    uint8_t glide_sh, ev_sh, cr_amt, th_amt;
     uint32_t cr_ph[NAT_NCRICK];
     int32_t cr_cnt[NAT_NCRICK], cr_pulses[NAT_NCRICK], cr_env[NAT_NCRICK], cr_on[NAT_NCRICK];
     int32_t scene_note, fade, boost[NL_COUNT];
@@ -109,7 +112,7 @@ static void nat_walk(nat_t *s, int32_t *v, int32_t *tg, int32_t *cnt, int32_t lo
                      int32_t maxb, uint32_t sh)
 {
     if (--*cnt <= 0) {
-        *tg = nat_urand(s, lo, hi) << 8;
+        *tg = nat_urand(s, lo, hi) * 256;
         *cnt = FE_T(nat_urand(s, minb, maxb));
     }
     *v += (*tg - *v) >> (sh + FE_OCT);
@@ -359,7 +362,7 @@ static void nature_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
 {
     nat_t *s = NAT_ST(t);
     const int16_t *p = t->p;
-    int32_t lvl[NL_COUNT], evol = p[P_E6], mood, calm, tone, k, g, lo;
+    int32_t lvl[NL_COUNT], evol = p[P_E6], mood, calm, tone, k, g, lo, gsh;
     nat_c_t cw, cw2, cwl, csl, csh, crh, crd, crb, cfl, cfc, ctl;
     int32_t wamp = 0, whis = 0, rumble = 0, hiss = 0, rthr = 0, rbig = 0, rhiss = 0, roar = 0, cthr = 0;
     int32_t benv0 = 0, benv1 = 0, thamp = 0, crl = 0, cre0[NAT_NCRICK], cre1[NAT_NCRICK];
@@ -377,24 +380,25 @@ static void nature_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
 
     /* -------- the generative mix: presence of each layer (1 - EVOL * 0.78 .. 1), the mood's wander */
     lo = 32767 - evol * 200;
+    gsh = s->glide_sh ? clamp(s->glide_sh, 6, 13) : 8;
     for (k = 0; k < NL_COUNT; k++) {
         int32_t L;
         nat_walk(s, &s->wan[k], &s->wan_tg[k], &s->wan_cnt[k], lo, 32767, 11000, 41000, 12);
-        s->lv[k] += ((nat_lvl(p[P_E0 + k]) << 8) - s->lv[k]) >> (11 + FE_OCT);   /* glide ~1.5 s */
+        s->lv[k] += ((nat_lvl(p[P_E0 + k]) << 8) - s->lv[k]) >> (gsh + FE_OCT);   /* glide (~0.5 s by default) */
         L = s->lv[k] >> 8;
         lvl[k] = L > 40 ? (L * (s->wan[k] >> 8)) >> 15 : 0;
         if (s->boost[k]) {                             /* an event's boost: at least ~75 % while it lasts */
             int32_t b = (s->boost[k] * 24000) >> 15;
             if (b > lvl[k])
                 lvl[k] = b;
-            s->boost[k] -= (s->boost[k] >> (13 + FE_OCT)) + 1;
+            s->boost[k] -= (s->boost[k] >> ((s->ev_sh ? s->ev_sh : 13) + FE_OCT)) + 1;
             if (s->boost[k] < 0)
                 s->boost[k] = 0;
         }
     }
     nat_walk(s, &s->storm, &s->storm_tg, &s->storm_cnt, -evol * 120, evol * 120, 20000, 80000, 13);
-    s->mood_s += ((p[P_E5] * 258 << 8) - s->mood_s) >> (11 + FE_OCT);
-    s->night_s += ((clamp(s->night_tg, 0, 32767) << 8) - s->night_s) >> (12 + FE_OCT);
+    s->mood_s += ((p[P_E5] * 258 << 8) - s->mood_s) >> (gsh + FE_OCT);
+    s->night_s += ((clamp(s->night_tg, 0, 32767) << 8) - s->night_s) >> (gsh + 1 + FE_OCT);
     mood = clamp((s->mood_s >> 8) + (s->storm >> 8), 0, 32767);
     {   /* pressure on the key held last */
         int32_t pr = v->gate ? (int32_t)(NAT_AT(t)) * 258 : 0;
@@ -550,8 +554,9 @@ static void nature_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
         s->b_env = 0;
     }
     /* -------- crickets: at night (calm nights most), or called: pulsed trills of a high sine */
-    s->cr_boost -= (s->cr_boost >> (13 + FE_OCT)) + (s->cr_boost > 0);
+    s->cr_boost -= (s->cr_boost >> ((s->ev_sh ? s->ev_sh : 13) + FE_OCT)) + (s->cr_boost > 0);
     crl = ((((s->night_s >> 8) * calm) >> 15) * 24000) >> 15;
+    crl = clamp((crl * (s->cr_amt ? s->cr_amt : 64)) >> 6, 0, 32767);
     if (s->cr_boost > crl)
         crl = s->cr_boost;
     s->v_night = (int16_t)(s->night_s >> 8);
@@ -583,7 +588,7 @@ static void nature_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
             cre0[k] = cre1[k] = 0;
     /* -------- thunder: in a storm with rain, now and then a long low rumble */
     if (lvl[NL_RAIN] && mood > 20000 && s->thun < 3000 &&
-        nat_rnd(s) < (uint32_t)((mood - 20000) * (lvl[NL_RAIN] >> 10)) * 4u)
+        nat_rnd(s) < (uint32_t)((mood - 20000) * (lvl[NL_RAIN] >> 10)) * (uint32_t)(s->th_amt ? s->th_amt : 64) / 16u)
         s->thun = nat_urand(s, 16000, 32767);
     if (s->thun) {
         nat_walk(s, &s->thun_flk, &s->thun_flk_tg, &s->thun_flk_cnt, 6000, 32767, 60, 700, 6);
@@ -647,7 +652,7 @@ static void nature_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
         }
         if (benv0 | benv1) {
             int32_t e = benv0 + (((benv1 - benv0) * (int32_t)i) >> CTL_LOG2), vib = sine_i(s->b_vph);
-            uint32_t inc = binc + (uint32_t)(((int32_t)(binc >> 10) * vib) >> (s->b_kind == BK_TRILL ? 18 : 20));
+            uint32_t inc = binc + (uint32_t)(((int32_t)(binc >> 15) * vib) >> (s->b_kind == BK_TRILL ? 13 : 15));
             s->b_ph += inc;
             s->b_vph += vinc;
             y = (sine_i(s->b_ph) * e) >> 15;

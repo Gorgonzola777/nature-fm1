@@ -109,7 +109,7 @@ static void ns_init(void)
     uint32_t k;
     ns.rng = 0x2545F491u;
     for (k = 0; k < 7u; k++) {
-        ns.cl_x[k] = (int16_t)(ns_ur(0, NS_W) << 4);
+        ns.cl_x[k] = (int16_t)(ns_ur(0, NS_W) * 16);
         ns.cl_y[k] = (int16_t)ns_ur(2, 18);
         ns.cl_s[k] = (int16_t)ns_ur(5, 11);
     }
@@ -132,7 +132,7 @@ static int32_t ns_top(int32_t x, int32_t sea, int32_t shore)
         f = x * 256 / shore;                           /* (x / shore) ^ 1.6, near enough: 0.6 f^2 + 0.4 f */
         return NS_HZ - 2 + ((((f * f) >> 8) * 154 + f * 102) * 9 >> 16);
     }
-    return NS_HZ + 7 + ((x - shore) * 6) / 5;
+    return NS_HZ + 7 + ((x - shore) * 3) / 5;          /* the beach: a gentle slope into the water */
 }
 
 static void graph_nature(track_t *t)
@@ -219,7 +219,7 @@ static void graph_nature(track_t *t)
         int32_t cx, cy, sz = ns.cl_s[k], j;
         ns.cl_x[k] = (int16_t)(ns.cl_x[k] + 1 + ((windv * 6) >> 8) + (k >> 2));
         if ((ns.cl_x[k] >> 4) - sz * 2 > NS_W) {
-            ns.cl_x[k] = (int16_t)(-(sz * 2) << 4);
+            ns.cl_x[k] = (int16_t)(-(sz * 2) * 16);
             ns.cl_y[k] = (int16_t)ns_ur(2, 18 - ((dark * 8) >> 8));
         }
         cx = ns.cl_x[k] >> 4;
@@ -272,10 +272,10 @@ static void graph_nature(track_t *t)
             break;
         for (y = top < 0 ? 0 : top; y < NS_H; y++) {
             uint16_t c;
-            if (beach) {
-                if (y > top + 2 && x >= shore)
-                    break;
+            if (beach) {                               /* solid sand under the slope; wet (darker) at the water */
                 c = (x + y) % 4 ? C_SAND : ns_mix(C_SAND, pal[PC_LAND], 77);
+                if (x >= shore && y <= top + 1)
+                    c = ns_mix(C_SAND, pal[PC_SEA1], 110);
             } else {
                 c = y == top || (y == top + 1 && (x * 7) % 3 == 0) ? pal[PC_LAND2] : pal[PC_LAND];
             }
@@ -286,15 +286,10 @@ static void graph_nature(track_t *t)
             ns_px(x + lean, top - 1, pal[PC_LAND2]);
         }
     }
-    if (sea)                                           /* under the beach: shallow water over the sand, deepening */
-        for (x = shore; x < NS_W; x++)
-            for (y = ns_top(x, sea, shore) + 3; y < NS_H; y++)
-                ns_px(x, y, ns_mix(ns_mix(C_SAND, pal[PC_SEA1], 150), pal[PC_SEA0],
-                                   clamp((y - ns_top(x, sea, shore) - 3) * 64, 0, 256)));
     if (sea) {                                         /* foam licking the sand */
         int32_t crash = s->crash + s->foam;
         for (x = shore; x < NS_W; x++) {
-            y = ns_top(x, sea, shore) + 3;
+            y = ns_top(x, sea, shore) - 1;               /* (the water's edge, just over the slope) */
             if ((int32_t)(ns_rnd() >> 17) < 9830 + crash)
                 ns_px(x, y, C_FOAM);
         }
@@ -345,8 +340,8 @@ static void graph_nature(track_t *t)
                 s->v_crack = 0;
                 for (k = 0, i = ns_ur(2, 5); k < NS_NSPARK && i; k++)
                     if (!ns.sp_life[k]) {
-                        ns.sp_x[k] = (int16_t)((fx << 4) + ns_ur(-16, 16));
-                        ns.sp_y[k] = (int16_t)((fy - 3) << 4);
+                        ns.sp_x[k] = (int16_t)(fx * 16 + ns_ur(-16, 16));
+                        ns.sp_y[k] = (int16_t)((fy - 3) * 16);
                         ns.sp_vx[k] = (int16_t)(ns_ur(-6, 6) + ((windv * 5) >> 8));
                         ns.sp_vy[k] = (int16_t)ns_ur(-22, -10);
                         ns.sp_life[k] = 12;
@@ -356,8 +351,8 @@ static void graph_nature(track_t *t)
             if (tt % 5u == 0)
                 for (k = 0; k < NS_NSMOKE; k++)
                     if (!ns.sm_life[k]) {
-                        ns.sm_x[k] = (int16_t)(fx << 4);
-                        ns.sm_y[k] = (int16_t)((fy - hgt - 1) << 4);
+                        ns.sm_x[k] = (int16_t)(fx * 16);
+                        ns.sm_y[k] = (int16_t)((fy - hgt - 1) * 16);
                         ns.sm_life[k] = 30;
                         break;
                     }
@@ -430,8 +425,8 @@ static void graph_nature(track_t *t)
     {
         int32_t want = (rain * NS_NDROP) >> 15, slant = 6 + ((windv * 26) >> 8);   /* Q4 px a frame across */
         while (ns.ndrops < want) {
-            ns.dr_x[ns.ndrops] = (int16_t)(ns_ur(-20, NS_W) << 4);
-            ns.dr_y[ns.ndrops] = (int16_t)(ns_ur(-10, NS_H) << 4);
+            ns.dr_x[ns.ndrops] = (int16_t)(ns_ur(-20, NS_W) * 16);
+            ns.dr_y[ns.ndrops] = (int16_t)(ns_ur(-10, NS_H) * 16);
             ns.ndrops++;
         }
         if (ns.ndrops > want)
@@ -440,8 +435,8 @@ static void graph_nature(track_t *t)
             ns.dr_x[k] = (int16_t)(ns.dr_x[k] + slant * 16 / 10);
             ns.dr_y[k] = (int16_t)(ns.dr_y[k] + 42);
             if ((ns.dr_y[k] >> 4) >= NS_H || (ns.dr_x[k] >> 4) >= NS_W + 5) {
-                ns.dr_x[k] = (int16_t)(ns_ur(-20, NS_W) << 4);
-                ns.dr_y[k] = (int16_t)(ns_ur(-8, 0) << 4);
+                ns.dr_x[k] = (int16_t)(ns_ur(-20, NS_W) * 16);
+                ns.dr_y[k] = (int16_t)(ns_ur(-8, 0) * 16);
             }
             for (i = 0; i < 3; i++)
                 ns_blend((ns.dr_x[k] - slant * i * 6 / 10) >> 4, (ns.dr_y[k] >> 4) - i, C_RAIN, 192 - i * 51);

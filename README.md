@@ -27,14 +27,18 @@ knobs below. Every key and knob does something, and the screen says what it did.
 | **White keys: places** | F3 SHORE, G3 STORM, A3 FOREST, B3 CAMPFIRE, C4 RAIN, D4 NIGHT, E4 DRIFT, D5 MEADOW, E5 MONSOON, F5 WINTER, G5 DAWN. The scene glides to the new place. The place's key is lit. |
 | **White keys: layers** | F4 WIND, G4 SEA, A4 RAIN, B4 FIRE, C5 BIRDS: on / off (lit while on). |
 | **Black keys: events** | F#3 THUNDER, G#3 BIG WAVE, A#3 GUST, C#4 DOWNPOUR, D#4 CRACKLE, F#4 BIRD, G#4 BIRD CHORUS, A#4 CALM, C#5 STORM, D#5 CRICKETS, F#5 SHUFFLE. Press harder for a stronger event (key pressure). They fade by themselves. |
-| **KNOB 1-4** | MOOD (calm .. storm), LIFE (how much the scene changes by itself), TONE (dark .. bright), VOL |
+| **KNOB 1-4** | the page's four, named on the screen. MAIN: MOOD (calm .. storm), LIFE (how much the scene changes by itself), TONE (dark .. bright), VOL |
+| **FX** | FX 1: REVERB, ECHO, ECHO TIME (60 ms .. 2 s), REPEAT. Again: FX 2: CHORUS, DRIVE, ROOM (size), TYPE (room, spring, hall) |
+| **LFO** | a slow LFO: TARGET (mood, tone, wind, sea, rain, fire, birds, vol, reverb, echo), RATE (0.01 .. 3.7 Hz), DEPTH, SHAPE (sine, triangle, square, random) |
+| **ENV** | FADE IN, FADE OUT (play / pause), GLIDE (how fast a place changes), EVENT (how long an event lasts) |
+| **EDIT** | MIX 1: WIND, SEA, RAIN, FIRE levels (turning one switches its layer on). Again: MIX 2: BIRDS, CRICKETS, THUNDER (how often), SENS (key pressure) |
 | **SELECT** | SPACE (reverb) |
 | **ALGORITHM** | TIME: day, dusk, night (crickets and the moon come out) |
 | **PRESETS** | the places, one by one |
 | **PLAY** | pause / play (fades out and in) |
-| **HOME** | the place as it was (undoes every change) |
+| **HOME** | on a page: back to MAIN; on MAIN: the place as it was (undoes its changes; effects stay) |
 | **OCT- / OCT+** | previous / next place |
-| **Any other button** | HELP: the key map on the screen; any button or key closes it |
+| **SCL, GLO, SAVE, ARP, SEQ, REC** | HELP: the key map on the screen; any button or key closes it |
 | **OCT- + OCT+ held 5 s** | update mode (UBOOT), for reinstalling whatever happens |
 
 ## Building
