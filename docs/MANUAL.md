@@ -59,8 +59,11 @@ switch on that the place did not have comes in at a medium level; set it on EDIT
 | F#4 | BIRD | | | |
 
 An event whose layer is off brings it in for a while, then it fades. **Key pressure**: hold an event key and press
-harder for a stronger event (louder thunder, a bigger wave, a harder gust, heavier rain, more crackles, more birds). The
-FM-1 reads pressure on F3 to C5, so it works on every event up to A#4. Sensitivity: GLO > SENS.
+harder for a stronger event (louder thunder, a bigger wave, a harder gust, heavier rain, more crackles, more birds).
+A light tap gives a distant, gentle one; a hard strike or a firm press brings it close: the sound you press gets louder and
+brighter, the rest of the scene steps back, and thunder pressed hard cracks right overhead. The bar under the message
+shows how hard you press. The FM-1 reads pressure on F3 to C5, so it works on every event up to A#4. Too touchy or not
+enough: GLO > SENS (1 soft .. 10 touchy).
 
 ## 4. The knobs
 

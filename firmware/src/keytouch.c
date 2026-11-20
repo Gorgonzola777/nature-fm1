@@ -12,7 +12,13 @@
  * The converter is the scan's while it reads the keys: MASTER comes from it (fm1_an.master), the battery from a short
  * pause of the readings once a second (kt_adc_batt). */
 #define KT_DBASE 185u            /* the driven reading with no pill resistance: the diode and the 595 */
+#if FELUCCA_NATURE_APP           /* NATURE: how hard a key lands counts too (an event is struck harder, not only leaned on) */
+#define KT_SETTLE 40u            /* ms */
+#define KT_SETTLE_SH 3
+#else
 #define KT_SETTLE 250u           /* ms */
+#define KT_SETTLE_SH 2
+#endif
 #define KT_DEAD 164              /* 0.04 of an octave (Q12) */
 static int32_t kt_base[KT_ROWKEYS];   /* the key's rest (the driven reading - KT_DBASE, Q16) */
 static int32_t kt_s[KT_ROWKEYS];      /* the pressure, smoothed (Q15) */
@@ -87,7 +93,7 @@ static void kt_poll(uint32_t now)
         if (d16 > kt_base[k])
             kt_base[k] = d16;                            /* eased off: that is the rest now */
         else
-            kt_base[k] += (d16 - kt_base[k]) >> (now - kt_t0[k] < KT_SETTLE ? 2 : 10);
+            kt_base[k] += (d16 - kt_base[k]) >> (now - kt_t0[k] < KT_SETTLE ? KT_SETTLE_SH : 10);
         lean = kt_lg12((uint32_t)kt_base[k]) - kt_lg12((uint32_t)d16);
         x = clamp((lean - KT_DEAD) * 32768 / kt_span(s), 0, 32767);
         kt_s[k] += ((x - kt_s[k]) * 11) >> 6;

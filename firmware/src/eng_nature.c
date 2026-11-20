@@ -39,6 +39,8 @@ enum { NL_WIND, NL_SEA, NL_RAIN, NL_FIRE, NL_BIRD, NL_COUNT };
 
 /* each layer's make-up gain (Q8): alone at full level they sit near -18 dBFS RMS */
 static const int16_t NAT_GAIN[NL_COUNT] = {100, 400, 380, 110, 600};
+#define TH_MID 24                          /* the thunder's body and crack (x16) */
+#define TH_CRK 16
 
 typedef struct { int32_t ic1, ic2; } nat_f_t;               /* an SVF's state */
 typedef struct { int32_t a1, a2, a3, k; } nat_c_t;          /* its coefficients, per block */
@@ -68,7 +70,8 @@ typedef struct {
     int32_t b_state, b_cnt, b_syl, b_sylno, b_base, b_f0, b_f1, b_len, b_pos, b_kind, b_amp, b_env;
     /* thunder */
     int32_t thun, thun_flk, thun_flk_tg, thun_flk_cnt;
-    nat_f_t t_lp;
+    int32_t tcrk, tcrk_arm;               /* the crack overhead (Q15; pressed hard, or a big natural one), armed */
+    nat_f_t t_lp, t_mid, t_crk;
     /* output DC blocker */
     int32_t dc;
     /* the keys: latch, the key the scene is tuned to, the fade (Q15), the events' boosts (Q15) */
@@ -282,16 +285,16 @@ static void nat_event(nat_t *s, int32_t ev)
     /* (the events under pressure start at about half: pressing harder takes them the rest of the way, nat_render) */
     case EV_THUNDER:
     {
-        int32_t th = nat_urand(s, 16000, 19000);
+        int32_t th = nat_urand(s, 18000, 21000);
         if (th > s->thun)
             s->thun = th;
     }
         s->boost[NL_RAIN] = clamp(s->boost[NL_RAIN] + 6000, 0, 32767);
         break;
     case EV_WAVE:
-        if (s->boost[NL_SEA] < 20000)
-            s->boost[NL_SEA] = 20000;
-        s->wave_big = 17000;
+        if (s->boost[NL_SEA] < 24000)
+            s->boost[NL_SEA] = 24000;
+        s->wave_big = 22000;
         s->wave_ph = 0x80000000u;                      /* half way up: it breaks in a second or two */
         s->wave_inc = 0xFFFFFFFFu / (uint32_t)(5 * NAT_BPS);
         break;
@@ -302,15 +305,15 @@ static void nat_event(nat_t *s, int32_t ev)
         s->gust_cnt = FE_T(nat_urand(s, 1500, 3000));
         break;
     case EV_DOWNPOUR:
-        if (s->boost[NL_RAIN] < 18000)
-            s->boost[NL_RAIN] = 18000;
-        s->storm_tg = clamp(s->storm_tg + (5000 << 8), -(24000 << 8), 24000 << 8);
+        if (s->boost[NL_RAIN] < 24000)
+            s->boost[NL_RAIN] = 24000;
+        s->storm_tg = clamp(s->storm_tg + (7000 << 8), -(24000 << 8), 24000 << 8);
         s->storm_cnt = FE_T(14000);
         break;
     case EV_CRACKLE:
-        if (s->boost[NL_FIRE] < 20000)
-            s->boost[NL_FIRE] = 20000;
-        s->crack_n = 3;
+        if (s->boost[NL_FIRE] < 24000)
+            s->boost[NL_FIRE] = 24000;
+        s->crack_n = 6;
         s->v_crack = 255;
         break;
     case EV_BIRD:
@@ -382,8 +385,9 @@ static void nature_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
     nat_t *s = NAT_ST(t);
     const int16_t *p = t->p;
     int32_t lvl[NL_COUNT], evol = p[P_E6], mood, calm, tone, k, g, lo, gsh;
-    nat_c_t cw, cw2, cwl, csl, csh, crh, crd, crb, cfl, cfc, ctl;
+    nat_c_t cw, cw2, cwl, csl, csh, crh, crd, crb, cfl, cfc, ctl, ctm, ctc;
     int32_t wamp = 0, whis = 0, rumble = 0, hiss = 0, rthr = 0, rbig = 0, rhiss = 0, roar = 0, cthr = 0;
+    int32_t tl[NL_COUNT], thmid = 0, tck = 0;
     int32_t benv0 = 0, benv1 = 0, thamp = 0, crl = 0, cre0[NAT_NCRICK], cre1[NAT_NCRICK], chl = 0, chw = 0, mfm, crush, hold,
             dust;
     uint32_t crinc[NAT_NCRICK], chinc[NAT_NCHIME];
@@ -421,10 +425,16 @@ static void nature_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
     s->mood_s += ((p[P_E5] * 258 << 8) - s->mood_s) >> (gsh + FE_OCT);
     s->night_s += ((clamp(s->night_tg, 0, 32767) << 8) - s->night_s) >> (gsh + 1 + FE_OCT);
     mood = clamp((s->mood_s >> 8) + (s->storm >> 8), 0, 32767);
-    {   /* pressure on the key held last */
-        int32_t pr = v->gate ? (int32_t)(NAT_AT(t)) * 258 : 0;
-        s->press += (pr - s->press) >> (4 + FE_OCT);
+    /* TONE, the key around C4 and the track's FLT: an offset of every cutoff (0..127 << 8 units) */
+    tone = (p[P_E7] - 64) * 85 + (((s->scene_note - 60) * 85)) + (m->cutoff >> 1);
+    {   /* pressure on the key held last: quick in, ~0.2 s out */
+        int32_t pr = v->gate ? (int32_t)(NAT_AT(t)) * 258 : 0, pl = -1;
+        s->press += (pr - s->press) >> ((pr > s->press ? 3 : 7) + FE_OCT);
         pr = s->press;
+        for (k = 0; k < NL_COUNT; k++)
+            tl[k] = tone;
+        if (pr < 9000)
+            s->tcrk_arm = 1;
         if (pr > 300) {
             switch (s->last_key) {
             case EV_CRICKETS + 1:
@@ -432,15 +442,20 @@ static void nature_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
                     s->cr_boost = pr;
                 break;
             case EV_THUNDER + 1:                       /* a distant rumble at a touch .. overhead pressed hard */
-                g = 16000 + ((pr * 16767) >> 15);
+                g = 18000 + ((pr * 14767) >> 15);
                 if (g > s->thun)
                     s->thun = g;
+                if (pr > 22000 && s->tcrk_arm) {       /* pressed hard: it cracks right overhead */
+                    s->tcrk_arm = 0;
+                    s->tcrk = 32767;
+                }
                 break;
             case EV_WAVE + 1:
-                g = 17000 + ((pr * 15767) >> 15);
+                pl = NL_SEA;
+                g = 22000 + ((pr * 10767) >> 15);
                 if (g > s->wave_big)
                     s->wave_big = g;
-                g = 20000 + ((pr * 12767) >> 15);
+                g = 24000 + ((pr * 8767) >> 15);
                 if (g > s->boost[NL_SEA])
                     s->boost[NL_SEA] = g;
                 if (s->crash_tg > 0) {                 /* broken already: pressed, it crashes harder, foams more */
@@ -452,6 +467,7 @@ static void nature_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
                 }
                 break;
             case EV_GUST + 1:
+                pl = NL_WIND;
                 g = 19000 + ((pr * 13767) >> 15);
                 if (g * 256 > s->gust_tg)
                     s->gust_tg = s->gust = g * 256;
@@ -460,22 +476,25 @@ static void nature_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
                     s->boost[NL_WIND] = g;
                 break;
             case EV_DOWNPOUR + 1:
-                g = 18000 + ((pr * 14767) >> 15);
+                pl = NL_RAIN;
+                g = 24000 + ((pr * 8767) >> 15);
                 if (g > s->boost[NL_RAIN])
                     s->boost[NL_RAIN] = g;
                 mood = clamp(mood + (pr >> 2), 0, 32767);
                 break;
             case EV_CRACKLE + 1:
-                g = 20000 + ((pr * 12767) >> 15);
+                pl = NL_FIRE;
+                g = 24000 + ((pr * 8767) >> 15);
                 if (g > s->boost[NL_FIRE])
                     s->boost[NL_FIRE] = g;
-                if (!s->crack_n && (nat_rnd(s) >> 17) < (uint32_t)(pr >> 6)) {
+                if (!s->crack_n && (nat_rnd(s) >> 17) < (uint32_t)(pr >> 5)) {
                     s->crack_n = nat_urand(s, 1, 4);
                     s->v_crack = 255;
                 }
                 break;
             case EV_BIRD + 1:
             case EV_CHORUS + 1:
+                pl = NL_BIRD;
                 g = 22000 + ((pr * 10767) >> 15);
                 if (g > s->boost[NL_BIRD])
                     s->boost[NL_BIRD] = g;
@@ -491,11 +510,18 @@ static void nature_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
             default:
                 break;
             }
+            /* what is pressed comes forward, louder (up to +6 dB) and brighter; the rest steps back (up to -8 dB) */
+            if (pl >= 0 || s->last_key == EV_THUNDER + 1)
+                for (k = 0; k < NL_COUNT; k++) {
+                    if (k == pl) {
+                        lvl[k] = (lvl[k] * (32768 + pr)) >> 15;
+                        tl[k] = tone + ((pr * 22) >> 7);
+                    } else
+                        lvl[k] = (lvl[k] * (32767 - ((pr * 19) >> 5))) >> 15;
+                }
         }
     }
     calm = 32767 - mood;
-    /* TONE, the key around C4 and the track's FLT: an offset of every cutoff (0..127 << 8 units) */
-    tone = (p[P_E7] - 64) * 85 + (((s->scene_note - 60) * 85)) + (m->cutoff >> 1);
     lvl[NL_BIRD] = (lvl[NL_BIRD] * (calm >> 1) + lvl[NL_BIRD] * 8192) >> 15;   /* birds hide in a storm */
 
     for (k = 0; k < NL_COUNT; k++)
@@ -510,9 +536,9 @@ static void nature_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
         g = s->gust >> 8;
         wamp = 32767 - depth + ((g * depth) >> 15);
         whis = (mood * g) >> 15;
-        nat_coef(&cw, (54 << 8) + ((g * 32) >> 7) + tone, 70 + (mood >> 10));
-        nat_coef(&cw2, (78 << 8) + ((g * 26) >> 7) + tone, 116);
-        nat_coef(&cwl, (30 << 8) + ((g * 22) >> 7) + (tone >> 1), 20);
+        nat_coef(&cw, (54 << 8) + ((g * 32) >> 7) + tl[NL_WIND], 70 + (mood >> 10));
+        nat_coef(&cw2, (78 << 8) + ((g * 26) >> 7) + tl[NL_WIND], 116);
+        nat_coef(&cwl, (30 << 8) + ((g * 22) >> 7) + (tl[NL_WIND] >> 1), 20);
     }
     /* -------- sea: slow swells of brown noise, a crash of bright noise at each crest, the foam after */
     if (lvl[NL_SEA]) {
@@ -541,8 +567,8 @@ static void nature_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
             s->foam -= s->foam >> (12 + FE_OCT);
         rumble = 5000 + ((s->swell * 26000) >> 15);
         hiss = s->crash + s->foam;
-        nat_coef(&csl, (34 << 8) + ((s->swell * 22) >> 7) + tone, 10);
-        nat_coef(&csh, (74 << 8) + ((s->crash * 26) >> 7) + ((s->foam * 10) >> 7) + tone, 15);
+        nat_coef(&csl, (34 << 8) + ((s->swell * 22) >> 7) + tl[NL_SEA], 10);
+        nat_coef(&csh, (74 << 8) + ((s->crash * 26) >> 7) + ((s->foam * 10) >> 7) + tl[NL_SEA], 15);
     }
     /* -------- rain: a hiss and drops, small (bright, many) and big (lower, few) */
     if (lvl[NL_RAIN]) {
@@ -550,9 +576,9 @@ static void nature_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
         rthr = (int32_t)(((uint32_t)rate * NAT_HZ_INC) >> 16);   /* per sample, of 65536 */
         rbig = rthr >> 3;
         rhiss = 4000 + (mood >> 1);
-        nat_coef(&crh, (98 << 8) + tone, 10);
-        nat_coef(&crd, (nat_urand(s, 82, 108) << 8) + tone, 112);
-        nat_coef(&crb, (nat_urand(s, 62, 76) << 8) + tone, 100);
+        nat_coef(&crh, (98 << 8) + tl[NL_RAIN], 10);
+        nat_coef(&crd, (nat_urand(s, 82, 108) << 8) + tl[NL_RAIN], 112);
+        nat_coef(&crb, (nat_urand(s, 62, 76) << 8) + tl[NL_RAIN], 100);
     }
     /* -------- fire: a flickering low roar and crackles in bursts */
     if (lvl[NL_FIRE]) {
@@ -565,8 +591,8 @@ static void nature_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
             s->v_crack = 255;
         }
         cthr = s->crack_n ? (int32_t)((300u * NAT_HZ_INC) >> 16) : 0;   /* ~ every 3 ms inside a burst */
-        nat_coef(&cfl, (30 << 8) + ((g * 16) >> 7) + (tone >> 1), 35);
-        nat_coef(&cfc, (nat_urand(s, 86, 112) << 8) + tone, 45);
+        nat_coef(&cfl, (30 << 8) + ((g * 16) >> 7) + (tl[NL_FIRE] >> 1), 35);
+        nat_coef(&cfc, (nat_urand(s, 86, 112) << 8) + tl[NL_FIRE], 45);
     }
     /* -------- birds: chirps of a sine, its pitch swept, a trill's vibrato */
     if (lvl[NL_BIRD]) {
@@ -625,14 +651,27 @@ static void nature_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
     /* -------- thunder: in a storm with rain, now and then a long low rumble */
     if (lvl[NL_RAIN] && mood > 20000 && s->thun < 3000 &&
         nat_rnd(s) < (uint32_t)((mood - 20000) * (lvl[NL_RAIN] >> 10)) * (uint32_t)(s->th_amt ? s->th_amt : 64) / 16u)
+    {
         s->thun = nat_urand(s, 16000, 32767);
-    if (s->thun) {
+        if (s->thun > 29000)
+            s->tcrk = s->thun - 8000;                  /* a big one: right overhead */
+    }
+    if (s->thun) {   /* a low roll, its body (what a small speaker plays: the louder the higher) */
         nat_walk(s, &s->thun_flk, &s->thun_flk_tg, &s->thun_flk_cnt, 6000, 32767, 60, 700, 6);
         thamp = (s->thun * (s->thun_flk >> 8)) >> 15;
-        nat_coef(&ctl, (16 << 8) + ((s->thun * 28) >> 7) + (tone >> 2), 25);
+        thmid = (thamp * (6000 + (s->thun >> 1))) >> 15;
+        nat_coef(&ctl, (22 << 8) + ((s->thun * 36) >> 7) + (tone >> 2), 25);
+        nat_coef(&ctm, (56 << 8) + ((s->thun * 20) >> 7) + (tone >> 1), 30);
         s->thun -= (s->thun >> (12 + FE_OCT)) + 1;
         if (s->thun < 0)
             s->thun = 0;
+    }
+    if (s->tcrk) {   /* the crack: bright noise, flickering, gone in ~0.3 s */
+        tck = (s->tcrk * (s->thun ? s->thun_flk >> 8 : 32767)) >> 15;
+        nat_coef(&ctc, (84 << 8) + (tone >> 1), 20);
+        s->tcrk -= (s->tcrk >> (8 + FE_OCT)) + 1;
+        if (s->tcrk < 0)
+            s->tcrk = 0;
     }
 
     /* -------- wind chimes: struck in the key and scale, more in the gusts; two partials (a bar's 1 : 2.76) */
@@ -748,6 +787,12 @@ static void nature_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
         if (thamp) {
             y = clamp(nat_svf(&ctl, &s->t_lp, s->brown2, 0), -60000, 60000);
             acc += (y * thamp) >> 14;
+            nat_svf(&ctm, &s->t_mid, pk, &bp);
+            acc += ((clamp(bp, -60000, 60000) * thmid) >> 15) * TH_MID >> 4;
+        }
+        if (tck) {
+            nat_svf(&ctc, &s->t_crk, w, &bp);
+            acc += ((clamp(bp, -60000, 60000) * tck) >> 15) * TH_CRK >> 4;
         }
         if (chl) {                                     /* the chimes */
             int32_t cy = 0;
