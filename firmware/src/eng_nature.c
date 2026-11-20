@@ -604,7 +604,7 @@ static void nature_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
         if (lvl[NL_RAIN]) {
             int32_t imp = 0, big = 0, h, d, bb;
             if ((int32_t)(r2 & 0xFFFFu) < rthr)
-                imp = (r1 & 0x10000u) ? 20000 + (int32_t)((r2 >> 18) & 0x3FFFu) : -20000 - (int32_t)((r2 >> 18) & 0x3FFFu);
+                imp = (r1 & (1u << 16)) ? 20000 + (int32_t)((r2 >> 18) & 0x3FFFu) : -20000 - (int32_t)((r2 >> 18) & 0x3FFFu);
             if ((int32_t)((r2 >> 16) & 0xFFFFu) < rbig)
                 big = (r1 & 0x8000u) ? 26000 : -26000;
             nat_svf(&crh, &s->r_hiss, w2, &h);
