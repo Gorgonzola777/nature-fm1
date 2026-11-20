@@ -94,7 +94,7 @@ static const char *const N_CSCALE[] = {"MAJOR", "MINOR", "JAPAN", "WHOLE", "LYDI
 static const char *const N_ONOFF2[] = {"OFF", "ON"};
 static const char *const N_EVERY[] = {"30S", "1MIN", "2MIN", "3MIN", "5MIN", "10MIN", "20MIN"};
 static const uint16_t EVERY_S[7] = {30, 60, 120, 180, 300, 600, 1200};
-static const char *const N_ORDER[] = {"NEXT", "RANDOM"};
+static const char *const NUI_N_ORDER[] = {"NEXT", "RANDOM"};
 static const uint8_t LTGT_K[12] = {K_MOOD, K_TONE, K_WIND, K_SEA, K_RAIN, K_FIRE, K_BIRDS, K_VOL, K_SPACE, K_ECHO,
                                    K_FILT, K_CHIME};
 static const nui_knob_t NUI_K[K_N] = {
@@ -120,7 +120,7 @@ static const nui_knob_t NUI_K[K_N] = {
     [K_CKEY] = {"KEY", KT_LIST, 11, 0, N_KEY},     [K_CSCALE] = {"SCALE", KT_LIST, 4, 0, N_CSCALE},
     [K_CDECAY] = {"DECAY", KT_PCT, 127, 70, 0},
     [K_TOUR] = {"TOUR", KT_LIST, 1, 0, N_ONOFF2},  [K_EVERY] = {"EVERY", KT_LIST, 6, 3, N_EVERY},
-    [K_ORDER] = {"ORDER", KT_LIST, 1, 0, N_ORDER}, [K_AUTO] = {"AUTO EV", KT_PCT, 127, 0, 0},
+    [K_ORDER] = {"ORDER", KT_LIST, 1, 0, NUI_N_ORDER}, [K_AUTO] = {"AUTO EV", KT_PCT, 127, 0, 0},
 };
 /* the pages: what KNOB 1..4 set */
 enum { PG_MAIN, PG_FX1, PG_FX2, PG_LFO, PG_ENV, PG_MIX1, PG_MIX2, PG_LOFI, PG_GLO, PG_CHIME, PG_TOUR, PG_N };
