@@ -279,40 +279,50 @@ static int32_t nat_event_of(uint32_t note)
 static void nat_event(nat_t *s, int32_t ev)
 {
     switch (ev) {
+    /* (the events under pressure start at about half: pressing harder takes them the rest of the way, nat_render) */
     case EV_THUNDER:
-        s->thun = nat_urand(s, 26000, 32767);
+    {
+        int32_t th = nat_urand(s, 16000, 19000);
+        if (th > s->thun)
+            s->thun = th;
+    }
         s->boost[NL_RAIN] = clamp(s->boost[NL_RAIN] + 6000, 0, 32767);
         break;
     case EV_WAVE:
-        s->boost[NL_SEA] = 32767;
-        s->wave_big = 32767;
+        if (s->boost[NL_SEA] < 20000)
+            s->boost[NL_SEA] = 20000;
+        s->wave_big = 17000;
         s->wave_ph = 0x80000000u;                      /* half way up: it breaks in a second or two */
         s->wave_inc = 0xFFFFFFFFu / (uint32_t)(5 * NAT_BPS);
         break;
     case EV_GUST:
-        s->boost[NL_WIND] = 32767;
-        s->gust = s->gust_tg = 32767 << 8;
+        if (s->boost[NL_WIND] < 22000)
+            s->boost[NL_WIND] = 22000;
+        s->gust = s->gust_tg = 19000 << 8;
         s->gust_cnt = FE_T(nat_urand(s, 1500, 3000));
         break;
     case EV_DOWNPOUR:
-        s->boost[NL_RAIN] = 32767;
-        s->storm_tg = clamp(s->storm_tg + (9000 << 8), -(24000 << 8), 24000 << 8);
+        if (s->boost[NL_RAIN] < 18000)
+            s->boost[NL_RAIN] = 18000;
+        s->storm_tg = clamp(s->storm_tg + (5000 << 8), -(24000 << 8), 24000 << 8);
         s->storm_cnt = FE_T(14000);
         break;
     case EV_CRACKLE:
-        s->boost[NL_FIRE] = 32767;
-        s->crack_n = 7;
+        if (s->boost[NL_FIRE] < 20000)
+            s->boost[NL_FIRE] = 20000;
+        s->crack_n = 3;
         s->v_crack = 255;
         break;
     case EV_BIRD:
     case EV_CHORUS:
-        s->boost[NL_BIRD] = 32767;
+        if (s->boost[NL_BIRD] < 22000)
+            s->boost[NL_BIRD] = 22000;
         if (s->b_state == 0)
             s->b_cnt = 1;
         s->chorus = ev == EV_CHORUS ? 4 : 0;
         break;
     case EV_CALM:
-        s->storm = s->storm_tg = -(20000 << 8);
+        s->storm = s->storm_tg = -(12000 << 8);
         s->storm_cnt = FE_T(20000);
         break;
     case EV_STORM:
@@ -421,30 +431,44 @@ static void nature_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
                 if (pr > s->cr_boost)
                     s->cr_boost = pr;
                 break;
-            case EV_THUNDER + 1:
-                if (pr > s->thun)
-                    s->thun = pr;
+            case EV_THUNDER + 1:                       /* a distant rumble at a touch .. overhead pressed hard */
+                g = 16000 + ((pr * 16767) >> 15);
+                if (g > s->thun)
+                    s->thun = g;
                 break;
             case EV_WAVE + 1:
-                if (pr > s->wave_big)
-                    s->wave_big = pr;
-                if (pr > s->boost[NL_SEA])
-                    s->boost[NL_SEA] = pr;
+                g = 17000 + ((pr * 15767) >> 15);
+                if (g > s->wave_big)
+                    s->wave_big = g;
+                g = 20000 + ((pr * 12767) >> 15);
+                if (g > s->boost[NL_SEA])
+                    s->boost[NL_SEA] = g;
+                if (s->crash_tg > 0) {                 /* broken already: pressed, it crashes harder, foams more */
+                    g = (s->wave_big * (24576 + (pr >> 2))) >> 15;
+                    if (g > s->crash_tg)
+                        s->crash_tg = g;
+                    if (pr > 8000 && s->foam < (g >> 1))
+                        s->foam = g >> 1;
+                }
                 break;
             case EV_GUST + 1:
-                if ((pr << 8) > s->gust_tg)
-                    s->gust_tg = pr << 8;
-                if (pr > s->boost[NL_WIND])
-                    s->boost[NL_WIND] = pr;
+                g = 19000 + ((pr * 13767) >> 15);
+                if (g * 256 > s->gust_tg)
+                    s->gust_tg = s->gust = g * 256;
+                g = 22000 + ((pr * 10767) >> 15);
+                if (g > s->boost[NL_WIND])
+                    s->boost[NL_WIND] = g;
                 break;
             case EV_DOWNPOUR + 1:
-                if (pr > s->boost[NL_RAIN])
-                    s->boost[NL_RAIN] = pr;
+                g = 18000 + ((pr * 14767) >> 15);
+                if (g > s->boost[NL_RAIN])
+                    s->boost[NL_RAIN] = g;
                 mood = clamp(mood + (pr >> 2), 0, 32767);
                 break;
             case EV_CRACKLE + 1:
-                if (pr > s->boost[NL_FIRE])
-                    s->boost[NL_FIRE] = pr;
+                g = 20000 + ((pr * 12767) >> 15);
+                if (g > s->boost[NL_FIRE])
+                    s->boost[NL_FIRE] = g;
                 if (!s->crack_n && (nat_rnd(s) >> 17) < (uint32_t)(pr >> 6)) {
                     s->crack_n = nat_urand(s, 1, 4);
                     s->v_crack = 255;
@@ -452,8 +476,9 @@ static void nature_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
                 break;
             case EV_BIRD + 1:
             case EV_CHORUS + 1:
-                if (pr > s->boost[NL_BIRD])
-                    s->boost[NL_BIRD] = pr;
+                g = 22000 + ((pr * 10767) >> 15);
+                if (g > s->boost[NL_BIRD])
+                    s->boost[NL_BIRD] = g;
                 if (s->b_state == 0 && s->b_cnt > (32767 - pr) >> 4)
                     s->b_cnt = (32767 - pr) >> 4;      /* pressed harder: the next phrase sooner */
                 break;

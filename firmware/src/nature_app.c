@@ -646,6 +646,20 @@ static void nui_draw_top(void)
         cv_rect(120 - w / 2, 92, w, 22, NUI_BG);
         nf_center(120, sc == 2 ? 96 : 99, nui.toast, NUI_TEXT, sc);
     }
+    {   /* an event's key held: how hard it is pressed (the event follows it), under the message */
+        nat_t *s = NAT_ST(&trk[0]);
+        uint32_t k, held = 0;
+        for (k = 0; k < 27u; k++)
+            if (((fm1_in.notes >> k) & 1u) && nui_key[k] >= 40u)
+                held = 1;
+        if (held && eng_mem_owner[0] == ENGI_NATURE + 1u) {
+            int32_t w = (s->press * 120) >> 15;
+            cv_rect(58, 112, 124, 6, NUI_BG);
+            cv_rect(60, 114, 120, 2, NUI_OFF);
+            cv_rect(60, 114, w, 2, NUI_ACC);
+            nf_text(186, 111, "PRESS", NUI_DIM, 1);
+        }
+    }
     cv_blit(0, 0);
 }
 
