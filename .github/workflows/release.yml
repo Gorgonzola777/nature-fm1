@@ -1,0 +1,15 @@
+# NATURE: build, attest and release on a tag (v1.0, v1.1, ...) with the FM-1 Firmware Hub's shared workflow.
+name: release
+on:
+  push:
+    tags: ['v*']
+jobs:
+  build:
+    uses: zvenson/fm1-build/.github/workflows/build.yml@v1
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    with:
+      build: git submodule update --init --recursive --depth 1 && python3 -m pip install fonttools && ./build.sh --release "${GITHUB_REF_NAME#v}"
+      packages: build/*.fwsc

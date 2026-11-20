@@ -44,6 +44,12 @@ static uint8_t eng_mem_owner[NPART];       /* engine index + 1 whose state is in
 #if FELUCCA_SLICE
 #include "eng_slice.c"
 #endif
+#if FELUCCA_NATURE
+#define NAT_OCT song.octave      /* NATURE's keys move with the octave buttons, as DRUM's */
+#define NAT_AT(t) ((t)->at)      /* the keys' pressure (keytouch.c, 1.8 AFTERTOUCH) or MIDI channel pressure */
+#define NAT_AT_ON(t) do { if (!(t)->p[P_ATSNS]) (t)->p[P_ATSNS] = 5; } while (0)   /* NATURE: pressure on (SENS 5) */
+#include "eng_nature.c"          /* NATURE: wind, sea, rain, fire, birds (MIT) */
+#endif
 #if FELUCCA_ADPCM
 #include "eng_adpcm.c"           /* ADPCM: BRR waves and an FIR echo, its DSP ported from snes_spc (adpcm_dsp.c, LGPL-2.1+) */
 #endif
@@ -72,6 +78,9 @@ static const engine_t *const ENGINES[NENGINES] = {
 #endif
 #if FELUCCA_ADPCM
     &ENG_ADPCM,                  /* 14 (ENGI_ADPCM; FELUCCA_ADPCM=0 builds without it) */
+#endif
+#if FELUCCA_NATURE
+    &ENG_NATURE,                 /* ENGI_NATURE: 14 (15 with ADPCM) */
 #endif
 };
 
@@ -135,6 +144,9 @@ static const uint8_t ENGINE_ORDER[NENG_SHOWN] = {
     10,                          /* DRUM */
 #if FELUCCA_ADPCM
     14,                          /* ADPCM (1.8): last, so the EDIT layer's white keys keep the 13 above (ui_layer.c LY_ENG_KEYS) */
+#endif
+#if FELUCCA_NATURE
+    ENGI_NATURE,                 /* NATURE (with ADPCM: after it, the PRESETS ENG knob only) */
 #endif
 };
 

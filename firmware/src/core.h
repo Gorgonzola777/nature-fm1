@@ -35,7 +35,11 @@
 #if FELUCCA_ADPCM && !FELUCCA_SLICE
 #error "FELUCCA_ADPCM needs FELUCCA_SLICE (ADPCM is engine 14, after SLICE)"
 #endif
-#define NENGINES (13 + FELUCCA_SLICE + FELUCCA_ADPCM)   /* SLICE (13), then ADPCM (14): the other engines keep their
+#ifndef FELUCCA_NATURE
+#define FELUCCA_NATURE 1         /* the NATURE engine (eng_nature.c): generative soundscapes, after SLICE / ADPCM */
+#endif
+#define ENGI_NATURE (13u + FELUCCA_SLICE + FELUCCA_ADPCM)
+#define NENGINES (13 + FELUCCA_SLICE + FELUCCA_ADPCM + FELUCCA_NATURE)   /* SLICE (13), then ADPCM (14): the other engines keep their
                                                          * numbers */
 #define ENGI_ADPCM 14u
 #define ENGI_DIGITAL 1u          /* reserved without FELUCCA_FM4: never selectable (eng_ok), its sounds load as FM6 */

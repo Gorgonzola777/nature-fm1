@@ -1,37 +1,52 @@
-# Felucca
+# NATURE for the M-VAVE FM-1
 
-[![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-blue.svg)](LICENSE)
+![NATURE](assets/nature/card.png) ![screen](assets/nature/screen.png)
 
-Felucca is open-source custom synthesizer firmware for the **M-VAVE FM-1**.
+**NATURE** turns the FM-1 into a generative soundscape machine: **wind, sea, rain, fire, birds and thunder**, all
+synthesised in real time (no samples), mixing and changing by themselves so the scene never repeats. A pixel-art
+landscape on the screen follows the sound: waves break when the surf hisses, lightning strikes with the thunder,
+sparks fly when the fire crackles, a bird on the pine sings when you hear it, and the person on the hill opens an
+umbrella when it rains.
 
-The FM-1 is the only supported hardware target. This project does not provide, maintain, or accept requests for ports to other devices or software platforms.
+NATURE is a fork of [Felucca](https://github.com/hugelton/Felucca) by Leo Kuroshita (Hügelton Instruments): every
+Felucca engine, the sequencer, effects, presets and MIDI stay as they are, NATURE is one more engine (and its screen).
 
 ## Install
 
-**Stable release: 1.8.1.** Connect your FM-1 by USB and use the [web installer](https://hugelton.github.io/Felucca/) in Chrome or Edge. The installer offers a way back to the official V15 firmware. Back up your projects and presets before changing firmware.
+Install the `.fwsc` from the [releases](../../releases) (or from [The Firmware Hub](https://thefirmwarehub.com)) in
+Chrome or Edge over USB. The installer can always take you back to M-VAVE's official V15. Back up your projects first.
 
-**Newer FM-1 flash: 1.8.2 beta.** Some newer FM-1 units use UC25HQ80 flash (JEDEC ID `0xB36014`). [1.8.2-beta](https://github.com/hugelton/Felucca/releases/tag/v1.8.2-beta) adds recognition for that chip; testing on the revised hardware is still pending. See [issue #320](https://github.com/hugelton/Felucca/issues/320). It is not the stable release.
+## Playing NATURE
 
-## Project resources
+Pick the NATURE engine (PRESETS: ENG knob, or hold EDIT and press E5) and one of its scenes:
+**SHORE, STORM, FOREST, CAMPFIRE, RAINY, DRIFT**.
 
-- [Web installer](https://hugelton.github.io/Felucca/)
-- [Web editor](https://hugelton.github.io/Felucca/webapp/editor/) ([source](https://github.com/hugelton/Felucca-WebApp))
-- [Manual and release notes](https://github.com/hugelton/Felucca/wiki/Home)
-- [Building from source](BUILDING.md)
-- [Issue tracker](https://github.com/hugelton/Felucca/issues)
+| Control | What it does |
+| --- | --- |
+| **White keys** | Latch: a white key starts the scene, it plays on with no key held. Another white key retunes it (lower: darker and closer, higher: brighter). A short light tap on the same key fades it out. |
+| **Black keys** | Events: F#3 THUNDER, G#3 BIG WAVE, A#3 GUST, C#4 DOWNPOUR, D#4 CRACKLE, F#4 BIRD, G#4 BIRD CHORUS, A#4 CALM, C#5 STORM, D#5 SHUFFLE (new mix now), F#5 THUNDER. A layer that is off comes in for a while. |
+| **Key pressure** | (F3..C5, aftertouch: switched on for NATURE, EDIT > VOICE 3 > AT) Hold a white key and press: the weather leans into a storm, and calms when you let go. Hold a black key and press: the event plays live (louder thunder, bigger wave, harder gust, heavier rain, more crackles, more birdsong). |
+| **HOME knobs 1-4** | MOOD (calm .. storm), EVOL (how much the scene lives by itself), TONE (dark .. bright), REL (fade-out) |
+| **EDIT page 1 (MIX)** | WIND, SEA, RAIN, FIRE levels |
+| **EDIT page 2 (SCENE)** | BIRD, MOOD, EVOL, TONE |
+| **ENV ATK / REL** | the scene's fade in / fade out |
+| **OCT- / OCT+** | move the keys (the events stay on their black keys) |
 
-The firmware uses [Felucca-Engines](https://github.com/hugelton/Felucca-Engines) (MIT) for its built-in sound engines and [felucca-bsp](https://github.com/hugelton/felucca-bsp) (MPL-2.0) for the FM-1 hardware layer. Neither repository implies support for Felucca on other hardware.
+Everything else is Felucca's: FX (reverb and delay suit NATURE well), LFO and the mod matrix (try LFO -> E6 MOOD for
+weather that comes and goes), SEQ (black-key notes on steps play thunder and waves in time), ARP, SAVE, MIDI.
+MIDI CC74 moves TONE, CC71 MOOD.
 
-## Development and support
+## Building
 
-Felucca focuses on the FM-1. Third-party modifications and ports are independent projects and are not tested or supported here. Contributions are considered at the maintainer's discretion; no development schedule or ongoing support is promised.
+As Felucca ([README.felucca.md](README.felucca.md), [BUILDING.md](BUILDING.md)). GitHub builds every push
+(`.github/workflows/build.yml`) and every `v*` tag as a release with the FM-1 Firmware Hub's
+[fm1-build](https://github.com/zvenson/fm1-build) workflow. Identity: `FM-1_6283XY` (release X.Y), `FM-1_628300` for
+test builds.
 
-Felucca is developed with the assistance of AI coding agents (code, tests, documentation, translation, maintenance). Design, features, sounds and direction are the maintainer's or the community's; no generative AI is used for music, icons or artwork. See [On AI-Assisted Development and Responsibility](https://github.com/hugelton/Felucca/discussions/166).
+The engine is `firmware/src/eng_nature.c` (MIT), its screen `firmware/src/ui_nature.c` (GPL-3.0-only).
 
-## Credits and licence
+## Licence and credits
 
-Felucca is free software under [GPL-3.0-only](LICENSE); the Hügelton Sample Pack is CC0 1.0. The engines and hardware layer retain their own licences. See [CREDITS.md](CREDITS.md) and [LICENSING.md](LICENSING.md).
-
-M-VAVE and FM-1 are trademarks of their respective owners. Felucca is not affiliated with, endorsed by or supported by M-VAVE.
-
-Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
+GPL-3.0-only, as Felucca (see [LICENSING.md](LICENSING.md), [CREDITS.md](CREDITS.md)). Felucca (C) 2026 Leo Kuroshita,
+Hügelton Instruments. NATURE engine and screen (C) 2026 Gorgonzola777. Felucca's sample pack: CC0 (VSCO-2 CE, VCSL by
+Versilian Studios). M-VAVE and FM-1 are trademarks of their owners; NATURE is not affiliated with M-VAVE or Felucca.

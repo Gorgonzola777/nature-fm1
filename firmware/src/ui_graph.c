@@ -13,6 +13,13 @@
 /* the height ADSR and LFO are drawn on: 100 px, or (MENU > LARGE's strip: draw_graph) the strip's ~ 56 */
 static int32_t graph_ht = 100;
 #include "ui_fm6op.c"                                /* EDIT > OPERATOR, OP ENV, OPERATOR 2: FM6's operators (their charts below) */
+#include "ui_nature.c"                               /* NATURE's pixel scene (HOME and its EDIT pages) */
+#if FELUCCA_NATURE
+#define NATURE_SEL(t) ((t)->eng_req % NENGINES == ENGI_NATURE && (t)->engine == ENGI_NATURE && \
+                       eng_mem_owner[(uint32_t)((t) - trk) % NPART] == ENGI_NATURE + 1u)
+#else
+#define NATURE_SEL(t) 0
+#endif
 
 /* Matches voice.c: attack is linear, decay and release are exponential
  * (env += (target - env) * k each tick, ~99 % after the set time). Time
@@ -1193,6 +1200,7 @@ static uint32_t graph_signature(void)
     if (strip_kind() == SK_TITLE)                    /* MENU > LARGE: the page's title (its engine, its number) */
         return h ^ 0x5A17u;
     if (pg->graph == GR_NONE || pg->graph == GR_ARP) h ^= ui.frame / 2u;
+    if (pg->scope == SC_ENGINE && NATURE_SEL(t)) h ^= ui.frame / 2u;   /* NATURE's scene moves */
     for (i = 0; i < P_COUNT; i++)
         h = (h ^ (uint32_t)t->p[i]) * 16777619u;
     h ^= (uint32_t)TSEL->preset * 7u + (uint32_t)song.g[G_SLOT] * 13u + TSEL->user * 257u + up_gen * 7919u + ui.uslot * 104729u +
@@ -1270,7 +1278,7 @@ static const char *eng_abbr(const char *name)
                                        {"SAMPLE", "SMPL"}, {"VOICE", "VOCL"}, {"TRIO", "TRIO"}, {"WHEEL", "WHEL"},
                                        {"GRAIN", "GRAN"}, {"PHYS", "PHYS"}, {"DRUM", "DRUM"},
                                        {"NOISE", "NOIS"}, {"FM6", "FM6"}, {"SLICE", "SLCE"},
-                                       {"ADPCM", "ADPC"}};
+                                       {"ADPCM", "ADPC"}, {"NATURE", "NATR"}};
     uint32_t i;
     for (i = 0; i < sizeof A / sizeof A[0]; i++)
         if (str_eq(name, A[i][0]))
@@ -2264,6 +2272,11 @@ static void draw_graph(void)
         graph_ht = 100;
     } else if (ui.home) {
         cv_oy = 0;
+#if FELUCCA_NATURE
+        if (NATURE_SEL(t))
+            graph_nature((track_t *)t);
+        else
+#endif
         graph_scope(c);
     } else {
         switch (pg->graph) {
@@ -2350,6 +2363,9 @@ static void draw_graph(void)
 #if FELUCCA_FM4
             else if ((pg->scope == SC_ENGINE || pg->id[0] == P_FM1_LEVEL) && t->eng_req % NENGINES == ENGI_DIGITAL)
                 graph_fm(t, c);                      /* (OP LEVEL too: the levels on the chart) */
+#endif
+#if FELUCCA_NATURE
+            else if (pg->scope == SC_ENGINE && NATURE_SEL(t)) { cv_oy = 0; graph_nature((track_t *)t); }
 #endif
             else { cv_oy = 0; graph_scope(c); }
             break;
